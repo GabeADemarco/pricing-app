@@ -139,6 +139,17 @@ Sistema integral de gestión de precios, inventario, ventas y logística para op
 - 🚫 Gestión de vendedores excluidos
 - 📦 Sistema de pre-armados manuales
 
+### 📋 Gestión de Facturas de Compra
+
+- 📝 Carga inicial de facturas de compra con todos los datos necesarios
+- 🔄 Flujo completo: Carga → OC/FC → Retiro → Control → Pago
+- 👥 Roles específicos: COMPRAS, CARGA_OC_FC_GBP, DEPO, TESORERIA
+- 🔒 Permisos granulares por campo y acción
+- 💬 Sistema de observaciones por rol con historial completo
+- ✅ Validaciones de negocio (hard y soft)
+- 📅 Fechas automáticas en cada etapa del proceso
+- 🔍 Filtros y búsqueda avanzada
+
 ## 🛠️ Tecnologías
 
 ### Backend
@@ -874,6 +885,14 @@ invoke_skill("skill-creator", "Create a skill for FastAPI testing patterns")
 - `PATCH /api/pedidos-preparacion/{id}/estado` - Cambiar estado
 - `GET /api/pedidos-export` - Exportar pedidos para logística
 
+### Facturas de Compra
+- `GET /api/facturas-compras` - Listar facturas (con filtros y paginación)
+- `GET /api/facturas-compras/{id}` - Obtener factura específica
+- `POST /api/facturas-compras` - Crear nueva factura
+- `PATCH /api/facturas-compras/{id}` - Actualizar factura
+- `GET /api/facturas-compras/{id}/observaciones` - Listar observaciones
+- `POST /api/facturas-compras/{id}/observaciones` - Agregar observación
+
 ### Clientes
 - `GET /api/clientes` - Listar clientes
 - `GET /api/clientes/{id}` - Detalle de cliente
@@ -964,6 +983,30 @@ invoke_skill("skill-creator", "Create a skill for FastAPI testing patterns")
 - ❌ Edición de precios
 - ❌ Exportaciones
 - ❌ Gestión de usuarios
+
+### Roles de Facturas de Compra
+
+#### COMPRAS
+- ✅ Carga inicial de facturas
+- ✅ Edición de campos iniciales
+- ✅ Marcar como listo para pagar
+- ✅ Agregar observaciones
+
+#### CARGA_OC_FC_GBP
+- ✅ Cargar OC en sistema GBP
+- ✅ Cargar FC en sistema GBP
+- ✅ Agregar observaciones
+
+#### DEPO
+- ✅ Marcar como retirado
+- ✅ Marcar como controlado
+- ✅ Agregar observaciones
+
+#### TESORERIA
+- ✅ Marcar como pagado
+- ✅ Agregar observaciones
+
+**Ver documentación completa:** [`backend/FACTURAS_COMPRAS_README.md`](backend/FACTURAS_COMPRAS_README.md)
 
 ## 🚀 Despliegue
 

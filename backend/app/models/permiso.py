@@ -17,6 +17,7 @@ class CategoriaPermiso(str, enum.Enum):
     VENTAS_FUERA = "ventas_fuera"
     VENTAS_TN = "ventas_tn"
     CLIENTES = "clientes"
+    FACTURAS_COMPRAS = "facturas_compras"
     ADMINISTRACION = "administracion"
     REPORTES = "reportes"
     CONFIGURACION = "configuracion"
@@ -478,6 +479,87 @@ PERMISOS_SISTEMA = [
         "categoria": CategoriaPermiso.CLIENTES,
         "orden": 71
     },
+
+    # =========================================================================
+    # FACTURAS DE COMPRA
+    # =========================================================================
+    {
+        "codigo": "facturas_compras.ver",
+        "nombre": "Ver facturas de compra",
+        "descripcion": "Acceso a la lista de facturas de compra",
+        "categoria": CategoriaPermiso.FACTURAS_COMPRAS,
+        "orden": 80
+    },
+    {
+        "codigo": "facturas_compras.crear",
+        "nombre": "Crear factura de compra",
+        "descripcion": "Crear nueva factura de compra",
+        "categoria": CategoriaPermiso.FACTURAS_COMPRAS,
+        "orden": 81
+    },
+    {
+        "codigo": "facturas_compras.editar_campos_compras",
+        "nombre": "Editar campos de COMPRAS",
+        "descripcion": "Editar campos iniciales de la factura (razón social, proveedor, proforma, etc.)",
+        "categoria": CategoriaPermiso.FACTURAS_COMPRAS,
+        "orden": 82
+    },
+    {
+        "codigo": "facturas_compras.marcar_listo_pagar",
+        "nombre": "Marcar listo para pagar",
+        "descripcion": "Marcar factura como lista para pagar e iniciar el proceso",
+        "categoria": CategoriaPermiso.FACTURAS_COMPRAS,
+        "orden": 83
+    },
+    {
+        "codigo": "facturas_compras.cargar_oc",
+        "nombre": "Cargar OC en GBP",
+        "descripcion": "Cargar Orden de Compra en el sistema GBP/ERP",
+        "categoria": CategoriaPermiso.FACTURAS_COMPRAS,
+        "orden": 84
+    },
+    {
+        "codigo": "facturas_compras.cargar_fc",
+        "nombre": "Cargar FC en GBP",
+        "descripcion": "Cargar Factura en el sistema GBP/ERP",
+        "categoria": CategoriaPermiso.FACTURAS_COMPRAS,
+        "orden": 85
+    },
+    {
+        "codigo": "facturas_compras.marcar_retirado",
+        "nombre": "Marcar como retirado",
+        "descripcion": "Marcar factura como retirada/recibida en depósito",
+        "categoria": CategoriaPermiso.FACTURAS_COMPRAS,
+        "orden": 86
+    },
+    {
+        "codigo": "facturas_compras.marcar_controlado",
+        "nombre": "Marcar como controlado",
+        "descripcion": "Marcar factura como controlada físicamente en depósito",
+        "categoria": CategoriaPermiso.FACTURAS_COMPRAS,
+        "orden": 87
+    },
+    {
+        "codigo": "facturas_compras.marcar_pagado",
+        "nombre": "Marcar como pagado",
+        "descripcion": "Marcar factura como pagada",
+        "categoria": CategoriaPermiso.FACTURAS_COMPRAS,
+        "orden": 88
+    },
+    {
+        "codigo": "facturas_compras.agregar_observacion",
+        "nombre": "Agregar observación",
+        "descripcion": "Agregar observaciones a facturas de compra",
+        "categoria": CategoriaPermiso.FACTURAS_COMPRAS,
+        "orden": 89
+    },
+    {
+        "codigo": "facturas_compras.ver_observaciones",
+        "nombre": "Ver observaciones",
+        "descripcion": "Ver observaciones de facturas de compra",
+        "categoria": CategoriaPermiso.FACTURAS_COMPRAS,
+        "orden": 90
+    },
 ]
 
 
@@ -497,6 +579,7 @@ PERMISOS_POR_ROL = {
         "ventas_fuera.*",
         "ventas_tn.*",
         "clientes.*",
+        "facturas_compras.*",
         "reportes.*",
         "admin.ver_panel",
         "admin.gestionar_usuarios",
@@ -570,5 +653,36 @@ PERMISOS_POR_ROL = {
         "reportes.ver_notificaciones",
         "reportes.ver_calculadora",
         "config.ver_tipo_cambio",
+    ],
+    # =========================================================================
+    # ROLES DE FACTURAS DE COMPRA
+    # =========================================================================
+    "COMPRAS": [
+        "facturas_compras.ver",
+        "facturas_compras.crear",
+        "facturas_compras.editar_campos_compras",
+        "facturas_compras.marcar_listo_pagar",
+        "facturas_compras.agregar_observacion",
+        "facturas_compras.ver_observaciones",
+    ],
+    "CARGA_OC_FC_GBP": [
+        "facturas_compras.ver",
+        "facturas_compras.cargar_oc",
+        "facturas_compras.cargar_fc",
+        "facturas_compras.agregar_observacion",
+        "facturas_compras.ver_observaciones",
+    ],
+    "DEPO": [
+        "facturas_compras.ver",
+        "facturas_compras.marcar_retirado",
+        "facturas_compras.marcar_controlado",
+        "facturas_compras.agregar_observacion",
+        "facturas_compras.ver_observaciones",
+    ],
+    "TESORERIA": [
+        "facturas_compras.ver",
+        "facturas_compras.marcar_pagado",
+        "facturas_compras.agregar_observacion",
+        "facturas_compras.ver_observaciones",
     ],
 }
