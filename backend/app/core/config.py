@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     # Mapbox Geocoding API
     MAPBOX_ACCESS_TOKEN: Optional[str] = None
     
+    # Nextcloud
+    NEXTCLOUD_URL: Optional[str] = None
+    NEXTCLOUD_USER: Optional[str] = None
+    NEXTCLOUD_PASSWORD: Optional[str] = None
+    NEXTCLOUD_APP_PASSWORD: Optional[str] = None  # App password recomendado para API
+    
     # GBP Parser (internal service) - construido desde ERP_BASE_URL
     @property
     def GBP_PARSER_URL(self) -> str:

@@ -48,7 +48,18 @@ class FacturaCompra(Base):
     # =========================================================================
     # CAMPOS DE COMPRAS (carga inicial)
     # =========================================================================
-    razon_social = Column(SQLEnum(RazonSocial), nullable=False, index=True)
+    # Nota: el tipo PostgreSQL `razonsocial` usa valores 'Grupo Gauss' y 'Pastoriza'.
+    # Para evitar el error de ENUM al intentar guardar el nombre ('GRUPO_GAUSS'),
+    # configuramos el Enum de SQLAlchemy para que persista SIEMPRE el .value.
+    razon_social = Column(
+        SQLEnum(
+            RazonSocial,
+            name="razonsocial",
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
+        nullable=False,
+        index=True,
+    )
     fecha_carga = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     
     # Proveedor (FK al ERP, por ahora nullable hasta integrar)
@@ -68,6 +79,10 @@ class FacturaCompra(Base):
     plazo = Column(String(100), nullable=True)  # Texto libre
     tipo_cambio = Column(String(100), nullable=True)  # Ej: "1480 - 3%"
     
+    # Estado general del flujo
+    # - iniciado = False  -> borrador (solo visible para COMPRAS / ADMIN)
+    # - iniciado = True   -> visible para todos los roles según sus permisos
+    iniciado = Column(Boolean, default=False, nullable=False, index=True)
     listo_para_pagar = Column(Boolean, default=False, nullable=False, index=True)
 
     # =========================================================================
@@ -116,6 +131,11 @@ class FacturaCompra(Base):
     # Relaciones
     creado_por = relationship("Usuario", foreign_keys=[creado_por_id])
     observaciones = relationship("FacturaCompraObservacion", back_populates="factura_compra", cascade="all, delete-orphan")
+
+    @property
+    def creado_por_nombre(self):
+        """Nombre del usuario que creó la factura (si existe)."""
+        return self.creado_por.nombre if self.creado_por else None
 
     def __repr__(self):
         return f"<FacturaCompra(id={self.id}, nro_factura='{self.nro_factura}', proveedor='{self.proveedor_nombre}')>"

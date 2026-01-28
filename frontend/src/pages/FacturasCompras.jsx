@@ -4,8 +4,9 @@ import { useQueryFilters } from '../hooks/useQueryFilters';
 import { usePermisos } from '../contexts/PermisosContext';
 import styles from './FacturasCompras.module.css';
 import axios from 'axios';
+import ModalCrearFactura from '../components/ModalCrearFactura';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://pricing.gaussonline.com.ar';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8002';
 
 export default function FacturasCompras() {
   const { tienePermiso } = usePermisos();
@@ -28,7 +29,8 @@ export default function FacturasCompras() {
     fc_cargada: '',
     retirado: '',
     controlado: '',
-    pagado: ''
+    pagado: '',
+    creadas_por_mi: ''
   }, {
     page: 'number',
     page_size: 'number'
@@ -44,6 +46,7 @@ export default function FacturasCompras() {
   const filtroRetirado = getFilter('retirado');
   const filtroControlado = getFilter('controlado');
   const filtroPagado = getFilter('pagado');
+  const filtroCreadasPorMi = getFilter('creadas_por_mi');
 
   const debouncedSearch = useDebounce(searchInput, 500);
 
@@ -82,8 +85,9 @@ export default function FacturasCompras() {
       if (filtroRetirado !== '') params.append('retirado', filtroRetirado);
       if (filtroControlado !== '') params.append('controlado', filtroControlado);
       if (filtroPagado !== '') params.append('pagado', filtroPagado);
+      if (filtroCreadasPorMi === 'true') params.append('creadas_por_mi', 'true');
 
-      const response = await axios.get(`${API_URL}/api/facturas-compras?${params}`, {
+      const response = await axios.get(`${API_URL}/facturas-compras?${params}`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -99,10 +103,10 @@ export default function FacturasCompras() {
     }
   };
 
-  const handleCrearFactura = async (datosFactura) => {
+  const handleCrearFactura = async (datosFactura, observacionesIniciales) => {
     try {
       const response = await axios.post(
-        `${API_URL}/api/facturas-compras`,
+        `${API_URL}/facturas-compras`,
         datosFactura,
         {
           headers: {
@@ -110,18 +114,38 @@ export default function FacturasCompras() {
           }
         }
       );
+      
+      // Si hay observaciones iniciales, agregarlas
+      if (observacionesIniciales?.trim()) {
+        try {
+          await axios.post(
+            `${API_URL}/facturas-compras/${response.data.id}/observaciones`,
+            { observacion: observacionesIniciales },
+            {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem('token')}`
+              }
+            }
+          );
+        } catch (obsError) {
+          console.error('Error agregando observación inicial:', obsError);
+          // No bloqueamos la creación si falla la observación
+        }
+      }
+      
       setMostrarModalCrear(false);
       cargarFacturas();
     } catch (error) {
       console.error('Error creando factura:', error);
       alert(error.response?.data?.detail || 'Error al crear factura de compra');
+      throw error; // Re-lanzar para que el modal pueda manejar el error
     }
   };
 
   const handleActualizarFactura = async (facturaId, cambios) => {
     try {
       const response = await axios.patch(
-        `${API_URL}/api/facturas-compras/${facturaId}`,
+        `${API_URL}/facturas-compras/${facturaId}`,
         cambios,
         {
           headers: {
@@ -139,10 +163,27 @@ export default function FacturasCompras() {
     }
   };
 
+  const handleEliminarBorrador = async (facturaId) => {
+    try {
+      await axios.delete(
+        `${API_URL}/facturas-compras/${facturaId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`
+          }
+        }
+      );
+      cargarFacturas();
+    } catch (error) {
+      console.error('Error eliminando borrador:', error);
+      alert(error.response?.data?.detail || 'Error al eliminar borrador');
+    }
+  };
+
   const handleVerDetalle = async (factura) => {
     try {
       const response = await axios.get(
-        `${API_URL}/api/facturas-compras/${factura.id}`,
+        `${API_URL}/facturas-compras/${factura.id}`,
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem('token')}`
@@ -169,6 +210,7 @@ export default function FacturasCompras() {
   };
 
   const getEstadoBadge = (factura) => {
+    if (!factura.iniciado) return { texto: 'En borrador', clase: styles.badgeEnProceso };
     if (factura.pagado) return { texto: 'Pagado', clase: styles.badgePagado };
     if (factura.fc_cargada) return { texto: 'FC Cargada', clase: styles.badgeFcCargada };
     if (factura.oc_cargada) return { texto: 'OC Cargada', clase: styles.badgeOcCargada };
@@ -288,6 +330,15 @@ export default function FacturasCompras() {
             <option value="false">No Pagado</option>
           </select>
 
+          <select
+            value={filtroCreadasPorMi}
+            onChange={(e) => updateFilters({ creadas_por_mi: e.target.value, page: 1 })}
+            className={styles.select}
+          >
+            <option value="">Creadas por - Todas</option>
+            <option value="true">Solo creadas por mí</option>
+          </select>
+
           <button
             className={styles.btnLimpiar}
             onClick={() => updateFilters({
@@ -299,6 +350,7 @@ export default function FacturasCompras() {
               retirado: '',
               controlado: '',
               pagado: '',
+              creadas_por_mi: '',
               page: 1
             })}
           >
@@ -318,6 +370,7 @@ export default function FacturasCompras() {
                 <th>ID</th>
                 <th>Razón Social</th>
                 <th>Proveedor</th>
+                <th>Creada por</th>
                 <th>Nro Factura</th>
                 <th>Nro Proforma</th>
                 <th>Fecha Carga</th>
@@ -345,6 +398,7 @@ export default function FacturasCompras() {
                       <td>{factura.id}</td>
                       <td>{factura.razon_social}</td>
                       <td>{factura.proveedor_nombre || '-'}</td>
+                      <td>{factura.creado_por_nombre || '-'}</td>
                       <td>{factura.nro_factura || '-'}</td>
                       <td>{factura.nro_proforma || '-'}</td>
                       <td>{formatearFecha(factura.fecha_carga)}</td>
@@ -393,6 +447,28 @@ export default function FacturasCompras() {
                         >
                           Ver
                         </button>
+                        {!factura.iniciado && puedeEditarCompras && (
+                          <>
+                            <button
+                              className={styles.btnSecundario}
+                              onClick={() => {
+                                if (!window.confirm('¿Iniciar el proceso de esta factura? Los demás roles podrán verla.')) return;
+                                handleActualizarFactura(factura.id, { iniciado: true });
+                              }}
+                            >
+                              Iniciar proceso
+                            </button>
+                            <button
+                              className={styles.btnPeligro}
+                              onClick={() => {
+                                if (!window.confirm('¿Eliminar este borrador de factura? Esta acción no se puede deshacer.')) return;
+                                handleEliminarBorrador(factura.id);
+                              }}
+                            >
+                              Eliminar borrador
+                            </button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   );
@@ -426,24 +502,12 @@ export default function FacturasCompras() {
         </div>
       )}
 
-      {/* Modal Crear (placeholder - se implementará después) */}
+      {/* Modal Crear */}
       {mostrarModalCrear && (
-        <div className={styles.modalOverlay} onClick={() => setMostrarModalCrear(false)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <h2>Nueva Factura de Compra</h2>
-              <button
-                className={styles.btnCerrar}
-                onClick={() => setMostrarModalCrear(false)}
-              >
-                ✕
-              </button>
-            </div>
-            <div className={styles.modalBody}>
-              <p>Formulario de creación - Por implementar</p>
-            </div>
-          </div>
-        </div>
+        <ModalCrearFactura
+          onClose={() => setMostrarModalCrear(false)}
+          onCrear={handleCrearFactura}
+        />
       )}
 
       {/* Modal Detalle (placeholder - se implementará después) */}

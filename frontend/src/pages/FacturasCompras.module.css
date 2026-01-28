@@ -242,6 +242,38 @@
   opacity: 0.9;
 }
 
+.btnSecundario {
+  margin-left: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btnSecundario:hover {
+  background: var(--color-bg);
+}
+
+.btnPeligro {
+  margin-left: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  background: #b91c1c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btnPeligro:hover {
+  background: #dc2626;
+}
+
 /* Paginación */
 .pagination {
   display: flex;

@@ -70,3 +70,7 @@ nul
 AGENTS.md
 .gga
 gmaps
+
+# Scripts de desarrollo local (no commitear)
+start-backend.ps1
+start-frontend.ps1

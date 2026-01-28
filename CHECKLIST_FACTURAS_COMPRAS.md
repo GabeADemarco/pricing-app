@@ -12,27 +12,27 @@
 
 ## 📋 Próximos Pasos
 
-### Paso 1: Crear Usuarios Genéricos para Pruebas
+### Paso 1: Crear Usuarios Genéricos para Pruebas ✅
 
 Crear usuarios de prueba para cada rol:
 
-- [ ] **Usuario COMPRAS**
-  - Username: `compras_test`
+- [x] **Usuario COMPRAS**
+  - Username: `compras`
   - Password: `compras123`
   - Rol: `COMPRAS`
   
-- [ ] **Usuario CARGA_OC_FC_GBP**
-  - Username: `carga_oc_fc_test`
+- [x] **Usuario CARGA_OC_FC_GBP**
+  - Username: `carga`
   - Password: `carga123`
   - Rol: `CARGA_OC_FC_GBP`
   
-- [ ] **Usuario DEPO**
-  - Username: `depo_test`
+- [x] **Usuario DEPO**
+  - Username: `depo`
   - Password: `depo123`
   - Rol: `DEPO`
   
-- [ ] **Usuario TESORERIA**
-  - Username: `tesoreria_test`
+- [x] **Usuario TESORERIA**
+  - Username: `tesoreria`
   - Password: `tesoreria123`
   - Rol: `TESORERIA`
 
@@ -46,30 +46,35 @@ Para cada usuario creado:
 - [ ] Verificar qué acciones puede realizar cada rol
 - [ ] Documentar diferencias entre roles
 
-### Paso 3: Implementar Formulario de Creación
+### Paso 3: Implementar Formulario de Creación ✅
 
-- [ ] Crear componente de formulario para nueva factura
-- [ ] Campos iniciales (COMPRAS):
+- [x] Crear componente de formulario para nueva factura
+- [x] Campos iniciales (COMPRAS):
   - Razón Social (select: Grupo Gauss / Pastoriza)
-  - Proveedor (buscador/select)
+  - Proveedor (input texto)
   - Nro Proforma
-  - Link Proforma (upload o URL)
+  - Link Proforma (input URL)
   - Logística (select: GAUSS / PROVEEDOR / TERCERO)
   - Prioridad (select: NORMAL / URGENTE)
   - Nro Factura
-  - Link Factura (upload o URL)
+  - Link Factura (input URL)
   - Forma de Pago (select: CONTADO / CHEQUE / CTA CTE)
   - Plazo (texto)
   - Tipo de Cambio (texto)
   - Observaciones (textarea)
-- [ ] Validaciones del formulario
-- [ ] Integración con API POST `/api/facturas-compras`
-- [ ] Manejo de errores
+- [x] Validaciones del formulario
+- [x] Integración con API POST `/api/facturas-compras`
+- [x] Manejo de errores
 
 ### Paso 4: Cargar Factura de Prueba y Verificar Vistas
 
 - [ ] Crear una factura de prueba usando usuario COMPRAS
 - [ ] Verificar que aparece en la tabla
+- [ ] Probar flujo de borrador:
+  - [ ] Crear factura como **borrador** (desmarcando "Iniciar proceso de carga de facturas")
+  - [ ] Verificar que el estado muestre **"En borrador"**
+  - [ ] Probar botón **"Eliminar borrador"** (con confirmación)
+  - [ ] Probar botón **"Iniciar proceso"** y verificar que cambia a **"En Proceso"** y ya no se puede borrar
 - [ ] Hacer login con cada rol y verificar:
   - [ ] COMPRAS: Ve todos los campos que cargó + puede editar
   - [ ] CARGA_OC_FC_GBP: Ve campos relevantes + puede cargar OC/FC

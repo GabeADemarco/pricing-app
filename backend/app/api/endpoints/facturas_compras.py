@@ -42,6 +42,7 @@ class FacturaCompraBase(BaseModel):
     forma_pago: Optional[FormaPago] = None
     plazo: Optional[str] = None
     tipo_cambio: Optional[str] = None
+    iniciado: Optional[bool] = False
 
 
 class FacturaCompraCreate(FacturaCompraBase):
@@ -64,6 +65,7 @@ class FacturaCompraUpdate(BaseModel):
     forma_pago: Optional[FormaPago] = None
     plazo: Optional[str] = None
     tipo_cambio: Optional[str] = None
+    iniciado: Optional[bool] = None
     listo_para_pagar: Optional[bool] = None
     
     # Campos de CARGA_OC_FC_GBP
@@ -96,6 +98,7 @@ class FacturaCompraResponse(BaseModel):
     forma_pago: Optional[FormaPago] = None
     plazo: Optional[str] = None
     tipo_cambio: Optional[str] = None
+    iniciado: bool
     listo_para_pagar: bool
     
     # Campos de CARGA_OC_FC_GBP
@@ -120,6 +123,7 @@ class FacturaCompraResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     creado_por_id: Optional[int] = None
+    creado_por_nombre: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -166,6 +170,7 @@ async def listar_facturas_compras(
     controlado: Optional[bool] = Query(None, description="Filtrar por controlado"),
     pagado: Optional[bool] = Query(None, description="Filtrar por pagado"),
     search: Optional[str] = Query(None, description="Buscar por proveedor, nro factura o nro proforma"),
+    creadas_por_mi: Optional[bool] = Query(None, description="Si es true, solo facturas creadas por el usuario actual"),
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
@@ -203,6 +208,9 @@ async def listar_facturas_compras(
     if pagado is not None:
         query = query.filter(FacturaCompra.pagado == pagado)
     
+    if creadas_por_mi:
+        query = query.filter(FacturaCompra.creado_por_id == current_user.id)
+    
     if search:
         search_filter = or_(
             FacturaCompra.proveedor_nombre.ilike(f"%{search}%"),
@@ -211,6 +219,12 @@ async def listar_facturas_compras(
         )
         query = query.filter(search_filter)
     
+    # Filtrar por iniciado según rol:
+    # - COMPRAS / ADMIN / SUPERADMIN: ven también borradores (iniciado = False)
+    # - Otros roles: solo ven facturas con iniciado = True
+    if current_user.rol_codigo not in ["COMPRAS", "ADMIN", "SUPERADMIN"]:
+        query = query.filter(FacturaCompra.iniciado.is_(True))
+
     # Contar total
     total = query.count()
     
@@ -254,6 +268,43 @@ async def obtener_factura_compra(
         )
     
     return FacturaCompraResponse.model_validate(factura)
+
+
+@router.delete("/{factura_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def eliminar_factura_borrador(
+    factura_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """
+    Elimina una factura de compra solo si está en borrador (iniciado = False).
+    Pensado para que COMPRAS pueda descartar borradores antes de iniciar el proceso.
+    """
+    # Solo COMPRAS / ADMIN / SUPERADMIN (mismo permiso que editar campos de COMPRAS)
+    if not verificar_permiso(db, current_user, 'facturas_compras.editar_campos_compras'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para eliminar facturas de compra"
+        )
+
+    factura = db.query(FacturaCompra).filter(FacturaCompra.id == factura_id).first()
+
+    if not factura:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Factura de compra no encontrada"
+        )
+
+    # Solo permitir eliminar borradores
+    if factura.iniciado:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Solo se pueden eliminar facturas en borrador (no iniciadas)"
+        )
+
+    db.delete(factura)
+    db.commit()
+    return
 
 
 @router.post("", response_model=FacturaCompraResponse, status_code=status.HTTP_201_CREATED)

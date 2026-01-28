@@ -201,6 +201,7 @@ input[type="number"],
 input[type="date"],
 input[type="email"],
 input[type="password"],
+input[type="url"],
 textarea {
   background: var(--bg-primary) !important;
   color: var(--text-primary) !important;
@@ -215,6 +216,7 @@ input[type="number"]:focus,
 input[type="date"]:focus,
 input[type="email"]:focus,
 input[type="password"]:focus,
+input[type="url"]:focus,
 textarea:focus {
   border-color: var(--brand-primary) !important;
   outline: none;
