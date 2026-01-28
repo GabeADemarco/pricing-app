@@ -20,19 +20,36 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # ========================================
-    # 1. Crear ENUMs
+    # 1. Crear ENUMs (usando IF NOT EXISTS para evitar errores si ya existen)
     # ========================================
-    razon_social_enum = postgresql.ENUM('Grupo Gauss', 'Pastoriza', name='razonsocial')
-    razon_social_enum.create(op.get_bind(), checkfirst=True)
+    # Verificar y crear ENUMs solo si no existen
+    conn = op.get_bind()
     
-    logistica_enum = postgresql.ENUM('GAUSS', 'PROVEEDOR', 'TERCERO', name='logistica')
-    logistica_enum.create(op.get_bind(), checkfirst=True)
+    # Verificar si razonsocial existe
+    result = conn.execute(sa.text("SELECT 1 FROM pg_type WHERE typname = 'razonsocial'"))
+    if result.fetchone() is None:
+        op.execute("CREATE TYPE razonsocial AS ENUM ('Grupo Gauss', 'Pastoriza')")
     
-    prioridad_enum = postgresql.ENUM('NORMAL', 'URGENTE', name='prioridad')
-    prioridad_enum.create(op.get_bind(), checkfirst=True)
+    # Verificar si logistica existe
+    result = conn.execute(sa.text("SELECT 1 FROM pg_type WHERE typname = 'logistica'"))
+    if result.fetchone() is None:
+        op.execute("CREATE TYPE logistica AS ENUM ('GAUSS', 'PROVEEDOR', 'TERCERO')")
     
-    forma_pago_enum = postgresql.ENUM('CONTADO', 'CHEQUE', 'CTA CTE', name='formapago')
-    forma_pago_enum.create(op.get_bind(), checkfirst=True)
+    # Verificar si prioridad existe
+    result = conn.execute(sa.text("SELECT 1 FROM pg_type WHERE typname = 'prioridad'"))
+    if result.fetchone() is None:
+        op.execute("CREATE TYPE prioridad AS ENUM ('NORMAL', 'URGENTE')")
+    
+    # Verificar si formapago existe
+    result = conn.execute(sa.text("SELECT 1 FROM pg_type WHERE typname = 'formapago'"))
+    if result.fetchone() is None:
+        op.execute("CREATE TYPE formapago AS ENUM ('CONTADO', 'CHEQUE', 'CTA CTE')")
+    
+    # Crear objetos ENUM para usar en las columnas
+    razon_social_enum = postgresql.ENUM('Grupo Gauss', 'Pastoriza', name='razonsocial', create_type=False)
+    logistica_enum = postgresql.ENUM('GAUSS', 'PROVEEDOR', 'TERCERO', name='logistica', create_type=False)
+    prioridad_enum = postgresql.ENUM('NORMAL', 'URGENTE', name='prioridad', create_type=False)
+    forma_pago_enum = postgresql.ENUM('CONTADO', 'CHEQUE', 'CTA CTE', name='formapago', create_type=False)
 
     # ========================================
     # 2. Crear tabla facturas_compras

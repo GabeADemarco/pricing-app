@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'https://pricing.gaussonline.com.ar/api',  // API directa
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8002/api',  // API directa
 });
 
 api.interceptors.request.use((config) => {

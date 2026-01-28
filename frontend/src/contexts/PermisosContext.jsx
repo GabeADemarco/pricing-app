@@ -3,7 +3,7 @@ import axios from 'axios';
 
 const PermisosContext = createContext();
 
-const API_URL = 'https://pricing.gaussonline.com.ar/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8002/api';
 
 export const usePermisos = () => {
   const context = useContext(PermisosContext);
@@ -90,8 +90,8 @@ export const PermisosProvider = ({ children }) => {
    * @returns {boolean}
    */
   const tienePermiso = useCallback((codigo) => {
-    // SUPERADMIN tiene todos los permisos
-    if (rol === 'SUPERADMIN') return true;
+    // SUPERADMIN y ADMIN tienen todos los permisos
+    if (rol === 'SUPERADMIN' || rol === 'ADMIN') return true;
     return permisos.has(codigo);
   }, [permisos, rol]);
 
@@ -101,7 +101,7 @@ export const PermisosProvider = ({ children }) => {
    * @returns {boolean}
    */
   const tieneAlgunPermiso = useCallback((codigos) => {
-    if (rol === 'SUPERADMIN') return true;
+    if (rol === 'SUPERADMIN' || rol === 'ADMIN') return true;
     return codigos.some(codigo => permisos.has(codigo));
   }, [permisos, rol]);
 
@@ -111,7 +111,7 @@ export const PermisosProvider = ({ children }) => {
    * @returns {boolean}
    */
   const tieneTodosPermisos = useCallback((codigos) => {
-    if (rol === 'SUPERADMIN') return true;
+    if (rol === 'SUPERADMIN' || rol === 'ADMIN') return true;
     return codigos.every(codigo => permisos.has(codigo));
   }, [permisos, rol]);
 

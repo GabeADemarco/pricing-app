@@ -7,10 +7,9 @@ from app.core.database import get_db
 from app.models.usuario import Usuario
 from app.models.usuario import RolUsuario
 from app.models.rol import Rol
-from passlib.context import CryptContext
+import bcrypt
 
 router = APIRouter()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class UsuarioCreate(BaseModel):
     username: str
@@ -95,7 +94,7 @@ async def crear_usuario(
         username=usuario.username,
         email=usuario.email,
         nombre=usuario.nombre,
-        password_hash=pwd_context.hash(usuario.password),
+        password_hash=bcrypt.hashpw(usuario.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
         rol=None,  # Deprecado, usar rol_id
         rol_id=rol_obj.id,
         auth_provider="local",
@@ -199,7 +198,7 @@ async def cambiar_password_usuario(
         raise HTTPException(403, "No puedes cambiar el password de un superadministrador")
 
     # Cambiar password
-    usuario.password_hash = pwd_context.hash(datos.nueva_password)
+    usuario.password_hash = bcrypt.hashpw(datos.nueva_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     db.commit()
 
     return {"mensaje": "Password actualizado correctamente"}

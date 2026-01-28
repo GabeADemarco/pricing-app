@@ -42,6 +42,34 @@ NUEVOS_ROLES = [
 
 def upgrade() -> None:
     # ========================================
+    # 0. Agregar "facturas_compras" al ENUM categoriapermiso si no existe
+    # NOTA: PostgreSQL requiere commit antes de usar nuevos valores de ENUM.
+    # Si este paso falla, ejecutar manualmente en pgAdmin:
+    # ALTER TYPE categoriapermiso ADD VALUE IF NOT EXISTS 'facturas_compras';
+    # ========================================
+    conn = op.get_bind()
+    # Verificar si el valor ya existe en el ENUM
+    result = conn.execute(sa.text("""
+        SELECT 1 FROM pg_enum 
+        WHERE enumlabel = 'facturas_compras' 
+        AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'categoriapermiso')
+    """))
+    if result.fetchone() is None:
+        # Intentar agregar el valor al ENUM
+        # Si falla con "unsafe use of new value", ejecutar manualmente antes de esta migración
+        try:
+            op.execute("ALTER TYPE categoriapermiso ADD VALUE IF NOT EXISTS 'facturas_compras'")
+        except Exception as e:
+            if "UnsafeNewEnumValueUsage" in str(e) or "unsafe use" in str(e).lower():
+                raise Exception(
+                    "PostgreSQL requiere commit antes de usar nuevos valores de ENUM. "
+                    "Por favor ejecuta manualmente en pgAdmin:\n"
+                    "ALTER TYPE categoriapermiso ADD VALUE IF NOT EXISTS 'facturas_compras';\n"
+                    "Luego vuelve a ejecutar esta migración."
+                ) from e
+            raise
+    
+    # ========================================
     # 1. Insertar nuevos permisos
     # ========================================
     for codigo, nombre, descripcion, categoria, orden, es_critico in NUEVOS_PERMISOS:

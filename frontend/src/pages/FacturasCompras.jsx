@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useDebounce } from '../hooks/useDebounce';
 import { useQueryFilters } from '../hooks/useQueryFilters';
-import { usePermisos } from '../hooks/usePermisos';
+import { usePermisos } from '../contexts/PermisosContext';
 import styles from './FacturasCompras.module.css';
 import axios from 'axios';
 
