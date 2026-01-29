@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Variantes de Rosa - Badge Pagado</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #1a1a1a;
+            color: #e5e5e5;
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+            font-size: 2.5rem;
+            color: #ffffff;
+        }
+        .variants-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        .variant-card {
+            background: #2a2a2a;
+            border-radius: 12px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            border: 1px solid #3a3a3a;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .variant-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 16px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            white-space: nowrap;
+            color: #ffffff;
+            min-width: 100px;
+            text-align: center;
+        }
+        .color-info { width: 100%; text-align: center; }
+        .color-name {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #ffffff;
+        }
+        .color-codes {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 0.75rem;
+            color: #a0a0a0;
+            font-family: 'Courier New', monospace;
+        }
+        .color-code {
+            background: #1a1a1a;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 50px 0 20px 0;
+            color: #ffffff;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3a3a3a;
+        }
+        .section-title:first-of-type { margin-top: 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Variantes de Rosa - Badge "Pagado"</h1>
+
+        <h2 class="section-title">Rosa Claro (Light Pink)</h2>
+        <div class="variants-grid">
+            <div class="variant-card">
+                <div class="badge" style="background: #FFB6C1;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Light Pink</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FFB6C1</span>
+                        <span class="color-code">rgb(255, 182, 193)</span>
+                        <span class="color-code">hsl(351, 100%, 86%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #FFC0CB;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Pink</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FFC0CB</span>
+                        <span class="color-code">rgb(255, 192, 203)</span>
+                        <span class="color-code">hsl(350, 100%, 88%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #FFD1DC;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Pastel Pink</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FFD1DC</span>
+                        <span class="color-code">rgb(255, 209, 220)</span>
+                        <span class="color-code">hsl(346, 100%, 91%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #FFE4E9;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Lavender Blush</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FFE4E9</span>
+                        <span class="color-code">rgb(255, 228, 233)</span>
+                        <span class="color-code">hsl(340, 100%, 95%)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h2 class="section-title">Rosa Medio (Medium Pink)</h2>
+        <div class="variants-grid">
+            <div class="variant-card">
+                <div class="badge" style="background: #FF69B4;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Hot Pink</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FF69B4</span>
+                        <span class="color-code">rgb(255, 105, 180)</span>
+                        <span class="color-code">hsl(330, 100%, 71%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #FF1493;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Deep Pink</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FF1493</span>
+                        <span class="color-code">rgb(255, 20, 147)</span>
+                        <span class="color-code">hsl(328, 100%, 54%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #FF91A4;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Salmon Pink</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FF91A4</span>
+                        <span class="color-code">rgb(255, 145, 164)</span>
+                        <span class="color-code">hsl(348, 100%, 78%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #FF6B9D;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Rose Pink</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FF6B9D</span>
+                        <span class="color-code">rgb(255, 107, 157)</span>
+                        <span class="color-code">hsl(340, 100%, 71%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #FF7FAA;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Carnation Pink</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FF7FAA</span>
+                        <span class="color-code">rgb(255, 127, 170)</span>
+                        <span class="color-code">hsl(340, 100%, 75%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #FF8CC8;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Light Hot Pink</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FF8CC8</span>
+                        <span class="color-code">rgb(255, 140, 200)</span>
+                        <span class="color-code">hsl(325, 100%, 77%)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h2 class="section-title">Rosa Oscuro (Dark Pink)</h2>
+        <div class="variants-grid">
+            <div class="variant-card">
+                <div class="badge" style="background: #C2185B;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Dark Pink</div>
+                    <div class="color-codes">
+                        <span class="color-code">#C2185B</span>
+                        <span class="color-code">rgb(194, 24, 91)</span>
+                        <span class="color-code">hsl(332, 78%, 43%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #E91E63;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Pink 500</div>
+                    <div class="color-codes">
+                        <span class="color-code">#E91E63</span>
+                        <span class="color-code">rgb(233, 30, 99)</span>
+                        <span class="color-code">hsl(340, 78%, 52%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #D81B60;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Pink 600</div>
+                    <div class="color-codes">
+                        <span class="color-code">#D81B60</span>
+                        <span class="color-code">rgb(216, 27, 96)</span>
+                        <span class="color-code">hsl(339, 78%, 48%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #C2185B;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Pink 700</div>
+                    <div class="color-codes">
+                        <span class="color-code">#C2185B</span>
+                        <span class="color-code">rgb(194, 24, 91)</span>
+                        <span class="color-code">hsl(332, 78%, 43%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #AD1457;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Pink 800</div>
+                    <div class="color-codes">
+                        <span class="color-code">#AD1457</span>
+                        <span class="color-code">rgb(173, 20, 87)</span>
+                        <span class="color-code">hsl(331, 79%, 38%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #880E4F;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Pink 900</div>
+                    <div class="color-codes">
+                        <span class="color-code">#880E4F</span>
+                        <span class="color-code">rgb(136, 14, 79)</span>
+                        <span class="color-code">hsl(328, 81%, 29%)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h2 class="section-title">Rosa Suave (Soft Pink)</h2>
+        <div class="variants-grid">
+            <div class="variant-card">
+                <div class="badge" style="background: #F8BBD0;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Pink 100</div>
+                    <div class="color-codes">
+                        <span class="color-code">#F8BBD0</span>
+                        <span class="color-code">rgb(248, 187, 208)</span>
+                        <span class="color-code">hsl(339, 79%, 85%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #F48FB1;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Pink 200</div>
+                    <div class="color-codes">
+                        <span class="color-code">#F48FB1</span>
+                        <span class="color-code">rgb(244, 143, 177)</span>
+                        <span class="color-code">hsl(339, 81%, 76%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #F06292;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Pink 300</div>
+                    <div class="color-codes">
+                        <span class="color-code">#F06292</span>
+                        <span class="color-code">rgb(240, 98, 146)</span>
+                        <span class="color-code">hsl(339, 82%, 66%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #EC407A;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Pink 400</div>
+                    <div class="color-codes">
+                        <span class="color-code">#EC407A</span>
+                        <span class="color-code">rgb(236, 64, 122)</span>
+                        <span class="color-code">hsl(340, 82%, 59%)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h2 class="section-title">Rosa Vibrante (Vibrant Pink)</h2>
+        <div class="variants-grid">
+            <div class="variant-card">
+                <div class="badge" style="background: #FF10F0;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Magenta</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FF10F0</span>
+                        <span class="color-code">rgb(255, 16, 240)</span>
+                        <span class="color-code">hsl(305, 100%, 53%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #FF00FF;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Fuchsia</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FF00FF</span>
+                        <span class="color-code">rgb(255, 0, 255)</span>
+                        <span class="color-code">hsl(300, 100%, 50%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #FF33CC;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Hot Magenta</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FF33CC</span>
+                        <span class="color-code">rgb(255, 51, 204)</span>
+                        <span class="color-code">hsl(315, 100%, 60%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #FF66CC;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Light Magenta</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FF66CC</span>
+                        <span class="color-code">rgb(255, 102, 204)</span>
+                        <span class="color-code">hsl(320, 100%, 70%)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h2 class="section-title">Rosa Pastel (Pastel Pink)</h2>
+        <div class="variants-grid">
+            <div class="variant-card">
+                <div class="badge" style="background: #FFB3D9;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Light Rose</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FFB3D9</span>
+                        <span class="color-code">rgb(255, 179, 217)</span>
+                        <span class="color-code">hsl(325, 100%, 85%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #FFCCE5;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Pale Pink</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FFCCE5</span>
+                        <span class="color-code">rgb(255, 204, 229)</span>
+                        <span class="color-code">hsl(330, 100%, 90%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #FFE5F0;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Very Light Pink</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FFE5F0</span>
+                        <span class="color-code">rgb(255, 229, 240)</span>
+                        <span class="color-code">hsl(340, 100%, 95%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="variant-card">
+                <div class="badge" style="background: #FFB6C1;">Pagado</div>
+                <div class="color-info">
+                    <div class="color-name">Cherry Blossom</div>
+                    <div class="color-codes">
+                        <span class="color-code">#FFB6C1</span>
+                        <span class="color-code">rgb(255, 182, 193)</span>
+                        <span class="color-code">hsl(351, 100%, 86%)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -92,9 +92,15 @@ export default function FileUploadDropzone({
 
       const data = await response.json();
       
-      // Actualizar el campo con el link
+      // IMPORTANTE: Siempre usar share_url para visualización pública
+      // file_url es solo para acceso directo con autenticación WebDAV
       if (onChange) {
-        onChange(data.share_url || data.file_url);
+        if (data.share_url) {
+          onChange(data.share_url);
+        } else {
+          // Si no hay share_url, mostrar error porque no podemos visualizar sin share público
+          throw new Error('No se pudo crear el link público de visualización. Por favor, intentá nuevamente.');
+        }
       }
 
       if (onUploadComplete) {

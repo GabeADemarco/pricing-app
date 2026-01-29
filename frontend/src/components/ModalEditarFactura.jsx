@@ -1,26 +1,43 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import styles from './ModalCrearFactura.module.css';
 import FileUploadDropzone from './FileUploadDropzone';
 
-export default function ModalCrearFactura({ onClose, onCrear }) {
+export default function ModalEditarFactura({ factura, onClose, onActualizar }) {
   const [formData, setFormData] = useState({
-    razon_social: 'Grupo Gauss',
+    razon_social: '',
     proveedor_nombre: '',
     nro_proforma: '',
     link_proforma: '',
-    logistica: 'GAUSS',
-    prioridad: 'NORMAL',
+    logistica: '',
+    prioridad: '',
     nro_factura: '',
     link_factura: '',
-    forma_pago: 'CONTADO',
+    forma_pago: '',
     plazo: '',
     tipo_cambio: '',
-    observaciones: '',
-    iniciado: true
   });
 
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+
+  // Cargar datos de la factura al montar el componente
+  useEffect(() => {
+    if (factura) {
+      setFormData({
+        razon_social: factura.razon_social || 'Grupo Gauss',
+        proveedor_nombre: factura.proveedor_nombre || '',
+        nro_proforma: factura.nro_proforma || '',
+        link_proforma: factura.link_proforma || '',
+        logistica: factura.logistica || 'GAUSS',
+        prioridad: factura.prioridad || 'NORMAL',
+        nro_factura: factura.nro_factura || '',
+        link_factura: factura.link_factura || '',
+        forma_pago: factura.forma_pago || 'CONTADO',
+        plazo: factura.plazo || '',
+        tipo_cambio: factura.tipo_cambio || '',
+      });
+    }
+  }, [factura]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -37,72 +54,14 @@ export default function ModalCrearFactura({ onClose, onCrear }) {
     }
   };
 
-  const validateForm = () => {
-    // Solo validar campos obligatorios si se va a iniciar el proceso
-    if (!formData.iniciado) {
-      // Si es borrador, no validar nada
-      setErrors({});
-      return true;
-    }
-
-    const newErrors = {};
-
-    // Campos obligatorios para iniciar proceso
-    if (!formData.razon_social?.trim()) {
-      newErrors.razon_social = 'La razón social es requerida';
-    }
-
-    if (!formData.proveedor_nombre?.trim()) {
-      newErrors.proveedor_nombre = 'El proveedor es requerido';
-    }
-
-    if (!formData.nro_proforma?.trim()) {
-      newErrors.nro_proforma = 'El número de proforma es requerido';
-    }
-
-    if (!formData.link_proforma?.trim()) {
-      newErrors.link_proforma = 'El link de proforma es requerido';
-    }
-
-    if (!formData.logistica) {
-      newErrors.logistica = 'La logística es requerida';
-    }
-
-    if (!formData.prioridad) {
-      newErrors.prioridad = 'La prioridad es requerida';
-    }
-
-    if (!formData.forma_pago) {
-      newErrors.forma_pago = 'La forma de pago es requerida';
-    }
-
-    if (!formData.nro_factura?.trim()) {
-      newErrors.nro_factura = 'El número de factura es requerido';
-    }
-
-    if (!formData.link_factura?.trim()) {
-      newErrors.link_factura = 'El link de factura es requerido';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (!validateForm()) {
-      return;
-    }
-
     setLoading(true);
 
     try {
-      // Preparar datos para enviar (excluir observaciones que se manejan por separado)
-      const { observaciones, ...datosFactura } = formData;
-      
-      await onCrear(datosFactura, observaciones);
+      await onActualizar(factura.id, formData);
     } catch (error) {
       console.error('Error en handleSubmit:', error);
       // El error ya se maneja en el componente padre
@@ -115,7 +74,7 @@ export default function ModalCrearFactura({ onClose, onCrear }) {
     <div className="modal-overlay-tesla">
       <div className="modal-tesla lg" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header-tesla">
-          <h2 className="modal-title-tesla">Nueva Factura de Compra</h2>
+          <h2 className="modal-title-tesla">Editar Factura #{factura?.id}</h2>
           <button
             className="btn-close-tesla"
             onClick={onClose}
@@ -237,7 +196,9 @@ export default function ModalCrearFactura({ onClose, onCrear }) {
 
             {/* Nro Factura */}
             <div className={styles.formGroup}>
-              <label className={styles.label}>Nro Factura</label>
+              <label className={styles.label}>
+                Nro Factura <span className={styles.required}>*</span>
+              </label>
               <input
                 type="text"
                 name="nro_factura"
@@ -246,20 +207,31 @@ export default function ModalCrearFactura({ onClose, onCrear }) {
                 className={styles.input}
                 placeholder="Número de factura"
               />
+              {errors.nro_factura && (
+                <span className={styles.error}>{errors.nro_factura}</span>
+              )}
             </div>
 
             {/* Link Factura */}
             <div className={styles.formGroup}>
-              <label className={styles.label}>Link Factura</label>
+              <label className={styles.label}>
+                Link Factura <span className={styles.required}>*</span>
+              </label>
               <FileUploadDropzone
                 value={formData.link_factura}
                 onChange={(url) => {
                   setFormData(prev => ({ ...prev, link_factura: url }));
+                  if (errors.link_factura) {
+                    setErrors(prev => ({ ...prev, link_factura: null }));
+                  }
                 }}
                 folder="Facturas"
                 accept="application/pdf,image/*"
                 maxSizeMB={10}
               />
+              {errors.link_factura && (
+                <span className={styles.error}>{errors.link_factura}</span>
+              )}
             </div>
 
             {/* Forma de Pago */}
@@ -294,9 +266,7 @@ export default function ModalCrearFactura({ onClose, onCrear }) {
 
             {/* Tipo de Cambio */}
             <div className={styles.formGroup}>
-              <label className={styles.label}>
-                Tipo de Cambio <span className={styles.required}>*</span>
-              </label>
+              <label className={styles.label}>Tipo de Cambio</label>
               <input
                 type="text"
                 name="tipo_cambio"
@@ -305,43 +275,10 @@ export default function ModalCrearFactura({ onClose, onCrear }) {
                 className={styles.input}
                 placeholder="Ej: 1480 - 3%"
               />
-              {errors.tipo_cambio && (
-                <span className={styles.error}>{errors.tipo_cambio}</span>
-              )}
-            </div>
-
-            {/* Observaciones */}
-            <div className={styles.formGroup}>
-              <label className={styles.label}>Observaciones</label>
-              <textarea
-                name="observaciones"
-                value={formData.observaciones}
-                onChange={handleChange}
-                className={styles.textarea}
-                rows="3"
-                placeholder="Observaciones iniciales..."
-              />
             </div>
           </div>
 
           <div className="modal-footer-tesla">
-            <div className={styles.footerLeft}>
-              <label className={styles.checkboxLabel}>
-                <input
-                  type="checkbox"
-                  name="iniciado"
-                  checked={formData.iniciado}
-                  onChange={(e) =>
-                    setFormData(prev => ({
-                      ...prev,
-                      iniciado: e.target.checked,
-                    }))
-                  }
-                  className={styles.checkbox}
-                />
-                <span>Iniciar proceso de carga de facturas ahora</span>
-              </label>
-            </div>
             <button
               type="button"
               className="btn-tesla secondary"
@@ -355,7 +292,7 @@ export default function ModalCrearFactura({ onClose, onCrear }) {
               className="btn-tesla primary"
               disabled={loading}
             >
-              {loading ? 'Guardando...' : 'Crear Factura'}
+              {loading ? 'Guardando...' : 'Guardar Cambios'}
             </button>
           </div>
         </form>

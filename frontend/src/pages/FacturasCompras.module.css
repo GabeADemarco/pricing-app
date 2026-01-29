@@ -274,6 +274,30 @@
   background: #dc2626;
 }
 
+.linkClickable {
+  background: none;
+  border: none;
+  color: var(--accent-color, var(--color-primary));
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+  font-family: inherit;
+  transition: color 0.2s;
+}
+
+.linkClickable:hover:not(:disabled) {
+  color: var(--accent-color-hover, #4a9eff);
+  text-decoration: underline;
+}
+
+.linkClickable:disabled {
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 /* Paginación */
 .pagination {
   display: flex;

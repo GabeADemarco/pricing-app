@@ -436,6 +436,36 @@ async def actualizar_factura_compra(
         # Establecer fecha automáticamente
         update_data['pagado_fecha'] = datetime.now(UTC)
     
+    # Validar campos obligatorios al iniciar proceso
+    if 'iniciado' in update_data and update_data['iniciado'] and not factura.iniciado:
+        campos_faltantes = []
+        
+        # Campos obligatorios para iniciar proceso
+        if not factura.razon_social:
+            campos_faltantes.append('Razón Social')
+        if not factura.proveedor_nombre or not factura.proveedor_nombre.strip():
+            campos_faltantes.append('Proveedor')
+        if not factura.nro_proforma or not factura.nro_proforma.strip():
+            campos_faltantes.append('Nro Proforma')
+        if not factura.link_proforma or not factura.link_proforma.strip():
+            campos_faltantes.append('Link Proforma')
+        if not factura.logistica:
+            campos_faltantes.append('Logística')
+        if not factura.prioridad:
+            campos_faltantes.append('Prioridad')
+        if not factura.forma_pago:
+            campos_faltantes.append('Forma de Pago')
+        if not factura.nro_factura or not factura.nro_factura.strip():
+            campos_faltantes.append('Nro Factura')
+        if not factura.link_factura or not factura.link_factura.strip():
+            campos_faltantes.append('Link Factura')
+        
+        if campos_faltantes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"No se puede iniciar el proceso. Faltan los siguientes campos obligatorios: {', '.join(campos_faltantes)}"
+            )
+    
     # Actualizar campos
     for field, value in update_data.items():
         setattr(factura, field, value)

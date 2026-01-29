@@ -66,21 +66,58 @@ Para cada usuario creado:
 - [x] Integración con API POST `/api/facturas-compras`
 - [x] Manejo de errores
 
-### Paso 4: Cargar Factura de Prueba y Verificar Vistas
+### Paso 4: Cargar Factura de Prueba y Verificar Vistas ✅
 
-- [ ] Crear una factura de prueba usando usuario COMPRAS
-- [ ] Verificar que aparece en la tabla
-- [ ] Probar flujo de borrador:
-  - [ ] Crear factura como **borrador** (desmarcando "Iniciar proceso de carga de facturas")
-  - [ ] Verificar que el estado muestre **"En borrador"**
-  - [ ] Probar botón **"Eliminar borrador"** (con confirmación)
-  - [ ] Probar botón **"Iniciar proceso"** y verificar que cambia a **"En Proceso"** y ya no se puede borrar
-- [ ] Hacer login con cada rol y verificar:
-  - [ ] COMPRAS: Ve todos los campos que cargó + puede editar
-  - [ ] CARGA_OC_FC_GBP: Ve campos relevantes + puede cargar OC/FC
-  - [ ] DEPO: Ve campos relevantes + puede marcar retirado/controlado
-  - [ ] TESORERIA: Ve campos relevantes + puede marcar pagado
-- [ ] Verificar que cada rol solo ve lo que debe ver
+- [x] Crear una factura de prueba usando usuario COMPRAS
+- [x] Verificar que aparece en la tabla
+- [x] Probar flujo de borrador:
+  - [x] Crear factura como **borrador** (desmarcando "Iniciar proceso de carga de facturas")
+  - [x] Verificar que el estado muestre **"En borrador"**
+  - [x] Probar botón **"Eliminar borrador"** (con confirmación)
+  - [x] Probar botón **"Iniciar proceso"** y verificar que cambia a **"En Proceso"** y ya no se puede borrar
+- [x] Hacer login con cada rol y verificar visibilidad:
+  - [x] COMPRAS: Ve todas las facturas (borradores e iniciadas)
+  - [x] CARGA_OC_FC_GBP: Solo ve facturas iniciadas (`iniciado = true`)
+  - [x] DEPO: Solo ve facturas iniciadas (`iniciado = true`)
+  - [x] TESORERIA: Solo ve facturas iniciadas (`iniciado = true`)
+- [x] Verificar que cada rol solo ve lo que debe ver
+- [ ] Verificar qué campos/columnas específicas ve cada rol (pendiente)
+- [ ] Verificar qué acciones puede realizar cada rol (pendiente)
+
+### Paso 4.5: Mejoras de UX (ANTES DEL PASO 5) 🚧 (EN PROGRESO)
+
+#### 4.5.1: Edición de Borradores ✅
+- [x] Permitir editar facturas con `iniciado = false` (borradores)
+- [x] Crear modal de edición (similar al de creación)
+- [x] Validar campos obligatorios solo al "Iniciar proceso" (backend):
+  - [x] Razón Social
+  - [x] Proveedor
+  - [x] Nro Proforma
+  - [x] Link Proforma
+  - [x] Logística
+  - [x] Prioridad
+  - [x] Forma de Pago
+  - [x] Nro Factura
+  - [x] Link Factura
+- [x] Mostrar mensaje claro con campos faltantes si se intenta iniciar sin completar
+- [ ] (Opcional) Validación en frontend antes de iniciar proceso para mejor UX
+
+#### 4.5.2: Vista de Documentos en Modal ✅
+- [x] Mejorar modal "Ver Detalle" para mostrar documentos
+- [x] Agregar sección "Documentos" con:
+  - [x] Link a Proforma (si existe)
+  - [x] Link a Factura (si existe)
+  - [x] Botones para abrir en nueva pestaña
+- [x] Números de factura/proforma clickeables que abren popup con documento
+- [x] Transformación automática de URLs a formato de visualización de Nextcloud
+- [ ] (Futuro: vista previa cuando tengamos password_app)
+- **Nota:** Limitación conocida de Nextcloud: a veces el documento no se visualiza correctamente en la primera carga del popup. Solución: cerrar y volver a abrir. Este comportamiento también ocurre en el sistema actual de Google Sheets.
+
+#### 4.5.3: Badges Acumulativas (DESPUÉS)
+- [ ] Reemplazar columnas individuales (OC, FC, RETIRADO, etc.) por badges horizontales
+- [ ] Columna "Estado": "En borrador", "En Proceso", "Completado"
+- [ ] Columna "Progreso": badges con colores individuales cuando se completan
+- [ ] Badges: Listo para Pagar, OC, FC, Retirado, Controlado, Pagado
 
 ### Paso 5: Implementar Procesos de Cada Rol
 

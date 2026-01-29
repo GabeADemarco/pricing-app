@@ -5,6 +5,8 @@ import { usePermisos } from '../contexts/PermisosContext';
 import styles from './FacturasCompras.module.css';
 import axios from 'axios';
 import ModalCrearFactura from '../components/ModalCrearFactura';
+import ModalEditarFactura from '../components/ModalEditarFactura';
+import ModalVisualizarDocumento from '../components/ModalVisualizarDocumento';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8002';
 
@@ -16,7 +18,9 @@ export default function FacturasCompras() {
   const [totalPages, setTotalPages] = useState(0);
   const [mostrarModalCrear, setMostrarModalCrear] = useState(false);
   const [mostrarModalDetalle, setMostrarModalDetalle] = useState(false);
+  const [mostrarModalEditar, setMostrarModalEditar] = useState(false);
   const [facturaSeleccionada, setFacturaSeleccionada] = useState(null);
+  const [facturaAEditar, setFacturaAEditar] = useState(null);
 
   // Usar query params para filtros
   const { getFilter, updateFilters, searchParams } = useQueryFilters({
@@ -157,9 +161,34 @@ export default function FacturasCompras() {
       if (facturaSeleccionada?.id === facturaId) {
         setFacturaSeleccionada(response.data);
       }
+      if (facturaAEditar?.id === facturaId) {
+        setFacturaAEditar(response.data);
+      }
+      return response.data;
     } catch (error) {
       console.error('Error actualizando factura:', error);
-      alert(error.response?.data?.detail || 'Error al actualizar factura');
+      const mensajeError = error.response?.data?.detail || 'Error al actualizar factura';
+      alert(mensajeError);
+      throw error; // Re-lanzar para que el componente pueda manejar el error
+    }
+  };
+
+  const handleEditarFactura = async (facturaId, datos) => {
+    try {
+      await handleActualizarFactura(facturaId, datos);
+      setMostrarModalEditar(false);
+      setFacturaAEditar(null);
+    } catch (error) {
+      // El error ya se muestra en handleActualizarFactura
+    }
+  };
+
+  const handleIniciarProceso = async (facturaId) => {
+    try {
+      await handleActualizarFactura(facturaId, { iniciado: true });
+    } catch (error) {
+      // El error ya se muestra en handleActualizarFactura
+      // Si es error de validación, el usuario ya vio el mensaje con los campos faltantes
     }
   };
 
@@ -177,6 +206,95 @@ export default function FacturasCompras() {
     } catch (error) {
       console.error('Error eliminando borrador:', error);
       alert(error.response?.data?.detail || 'Error al eliminar borrador');
+    }
+  };
+
+  // Función helper para transformar URL de Nextcloud a formato de visualización
+  const transformToViewUrl = (url) => {
+    if (!url) return null;
+    
+    // Si es una URL de WebDAV (/remote.php/dav/files/), no podemos visualizarla directamente
+    // Estas URLs requieren autenticación y no son públicas
+    if (url.includes('/remote.php/dav/files/')) {
+      console.error('URL de WebDAV detectada. Esta URL requiere autenticación y no puede visualizarse públicamente.');
+      alert('Este documento tiene una URL de acceso directo que requiere autenticación. Por favor, contactá al administrador para regenerar el link público.');
+      return null;
+    }
+    
+    // Si la URL ya tiene el formato completo con openfile=true, devolverla tal cual
+    if (url.includes('openfile=true')) {
+      return url;
+    }
+    
+    // Si es un share URL de Nextcloud (/s/ o /index.php/s/), asegurar formato de visualización
+    if (url.includes('/s/')) {
+      try {
+        const urlObj = new URL(url);
+        const pathParts = urlObj.pathname.split('/s/');
+        
+        if (pathParts.length === 2) {
+          const shareToken = pathParts[1].split('?')[0]; // Remover query params existentes si hay
+          // Construir URL de visualización
+          const basePath = urlObj.pathname.includes('/index.php') ? '/index.php' : '';
+          return `${urlObj.protocol}//${urlObj.host}${basePath}/s/${shareToken}?dir=/&openfile=true`;
+        }
+      } catch (e) {
+        // Si falla el parsing (puede ser URL relativa o mal formada), intentar transformación simple
+        if (url.includes('/s/') && !url.includes('openfile=true')) {
+          // Agregar parámetros si no los tiene
+          const separator = url.includes('?') ? '&' : '?';
+          return `${url}${separator}dir=/&openfile=true`;
+        }
+      }
+    }
+    
+    // Para otros tipos de URLs, devolver tal cual
+    return url;
+  };
+
+  // Abrir documento en popup
+  const abrirDocumentoEnPopup = (url, titulo) => {
+    if (!url) {
+      alert('No hay documento disponible para visualizar.');
+      return;
+    }
+    
+    // Limpiar la URL de espacios y caracteres extraños
+    const cleanUrl = url.trim();
+    
+    const viewUrl = transformToViewUrl(cleanUrl);
+    if (!viewUrl) {
+      // El error ya se mostró en transformToViewUrl
+      return;
+    }
+    
+    // Validar que la URL no esté duplicada (verificar si contiene el patrón duplicado)
+    if (viewUrl.includes('/s/https://') || viewUrl.includes('/s/http://')) {
+      console.error('URL duplicada detectada:', viewUrl);
+      // Intentar extraer solo la parte correcta
+      const match = viewUrl.match(/https?:\/\/[^\/]+\/index\.php\/s\/[^?]+(\?.*)?/);
+      if (match) {
+        const correctedUrl = match[0];
+        console.log('URL corregida:', correctedUrl);
+        window.open(correctedUrl, `doc_${Date.now()}`, 'width=1200,height=800,scrollbars=yes,resizable=yes,toolbar=no,menubar=no,location=no,status=no');
+        return;
+      }
+    }
+    
+    // Abrir popup sin barras de navegación pero con scroll y zoom
+    // NOTA: Limitación conocida de Nextcloud: a veces el documento no se visualiza correctamente
+    // en la primera carga del popup. La solución es cerrar el popup y volver a abrirlo.
+    // Este comportamiento también ocurre en el sistema actual de Google Sheets.
+    const popup = window.open(
+      viewUrl,
+      `doc_${Date.now()}`,
+      'width=1200,height=800,scrollbars=yes,resizable=yes,toolbar=no,menubar=no,location=no,status=no'
+    );
+    
+    if (!popup) {
+      // Si el popup fue bloqueado, abrir en nueva pestaña
+      alert('El popup fue bloqueado. Abriendo en nueva pestaña...');
+      window.open(viewUrl, '_blank');
     }
   };
 
@@ -371,8 +489,8 @@ export default function FacturasCompras() {
                 <th>Razón Social</th>
                 <th>Proveedor</th>
                 <th>Creada por</th>
-                <th>Nro Factura</th>
                 <th>Nro Proforma</th>
+                <th>Nro Factura</th>
                 <th>Fecha Carga</th>
                 <th>Estado</th>
                 <th>OC</th>
@@ -399,8 +517,42 @@ export default function FacturasCompras() {
                       <td>{factura.razon_social}</td>
                       <td>{factura.proveedor_nombre || '-'}</td>
                       <td>{factura.creado_por_nombre || '-'}</td>
-                      <td>{factura.nro_factura || '-'}</td>
-                      <td>{factura.nro_proforma || '-'}</td>
+                      <td>
+                        {factura.nro_proforma ? (
+                          <button
+                            className={styles.linkClickable}
+                            onClick={() => {
+                              if (factura.link_proforma) {
+                                abrirDocumentoEnPopup(factura.link_proforma, `Proforma ${factura.nro_proforma}`);
+                              }
+                            }}
+                            disabled={!factura.link_proforma}
+                            title={factura.link_proforma ? 'Ver documento en popup' : 'Sin documento'}
+                          >
+                            {factura.nro_proforma}
+                          </button>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                      <td>
+                        {factura.nro_factura ? (
+                          <button
+                            className={styles.linkClickable}
+                            onClick={() => {
+                              if (factura.link_factura) {
+                                abrirDocumentoEnPopup(factura.link_factura, `Factura ${factura.nro_factura}`);
+                              }
+                            }}
+                            disabled={!factura.link_factura}
+                            title={factura.link_factura ? 'Ver documento en popup' : 'Sin documento'}
+                          >
+                            {factura.nro_factura}
+                          </button>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
                       <td>{formatearFecha(factura.fecha_carga)}</td>
                       <td>
                         <span className={estado.clase}>{estado.texto}</span>
@@ -452,8 +604,17 @@ export default function FacturasCompras() {
                             <button
                               className={styles.btnSecundario}
                               onClick={() => {
+                                setFacturaAEditar(factura);
+                                setMostrarModalEditar(true);
+                              }}
+                            >
+                              Editar
+                            </button>
+                            <button
+                              className={styles.btnSecundario}
+                              onClick={() => {
                                 if (!window.confirm('¿Iniciar el proceso de esta factura? Los demás roles podrán verla.')) return;
-                                handleActualizarFactura(factura.id, { iniciado: true });
+                                handleIniciarProceso(factura.id);
                               }}
                             >
                               Iniciar proceso
@@ -510,26 +671,138 @@ export default function FacturasCompras() {
         />
       )}
 
-      {/* Modal Detalle (placeholder - se implementará después) */}
+      {/* Modal Editar */}
+      {mostrarModalEditar && facturaAEditar && (
+        <ModalEditarFactura
+          factura={facturaAEditar}
+          onClose={() => {
+            setMostrarModalEditar(false);
+            setFacturaAEditar(null);
+          }}
+          onActualizar={handleEditarFactura}
+        />
+      )}
+
+      {/* Modal Detalle */}
       {mostrarModalDetalle && facturaSeleccionada && (
-        <div className={styles.modalOverlay} onClick={() => setMostrarModalDetalle(false)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <h2>Detalle Factura #{facturaSeleccionada.id}</h2>
+        <div className="modal-overlay-tesla" onClick={() => setMostrarModalDetalle(false)}>
+          <div className="modal-tesla lg" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header-tesla">
+              <h2 className="modal-title-tesla">Detalle Factura #{facturaSeleccionada.id}</h2>
               <button
-                className={styles.btnCerrar}
+                className="btn-close-tesla"
                 onClick={() => setMostrarModalDetalle(false)}
+                type="button"
               >
                 ✕
               </button>
             </div>
-            <div className={styles.modalBody}>
-              <p>Detalle y edición - Por implementar</p>
-              <pre>{JSON.stringify(facturaSeleccionada, null, 2)}</pre>
+            <div className="modal-body-tesla">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div>
+                  <strong>Razón Social:</strong> {facturaSeleccionada.razon_social}
+                </div>
+                <div>
+                  <strong>Proveedor:</strong> {facturaSeleccionada.proveedor_nombre || '-'}
+                </div>
+                <div>
+                  <strong>Nro Proforma:</strong> {facturaSeleccionada.nro_proforma || '-'}
+                </div>
+                <div>
+                  <strong>Nro Factura:</strong> {facturaSeleccionada.nro_factura || '-'}
+                </div>
+                <div>
+                  <strong>Logística:</strong> {facturaSeleccionada.logistica || '-'}
+                </div>
+                <div>
+                  <strong>Prioridad:</strong> {facturaSeleccionada.prioridad || '-'}
+                </div>
+                <div>
+                  <strong>Forma de Pago:</strong> {facturaSeleccionada.forma_pago || '-'}
+                </div>
+                <div>
+                  <strong>Plazo:</strong> {facturaSeleccionada.plazo || '-'}
+                </div>
+                <div>
+                  <strong>Tipo de Cambio:</strong> {facturaSeleccionada.tipo_cambio || '-'}
+                </div>
+                <div>
+                  <strong>Estado:</strong> {facturaSeleccionada.iniciado ? 'En Proceso' : 'En Borrador'}
+                </div>
+              </div>
+
+              {/* Sección Documentos */}
+              {(facturaSeleccionada.link_proforma || facturaSeleccionada.link_factura) && (
+                <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-color)' }}>
+                  <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>Documentos</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {facturaSeleccionada.link_proforma && (
+                      <div>
+                        <strong>Proforma:</strong>
+                        <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <a
+                            href={facturaSeleccionada.link_proforma}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              color: 'var(--accent-color)',
+                              textDecoration: 'underline',
+                              wordBreak: 'break-all'
+                            }}
+                          >
+                            {facturaSeleccionada.link_proforma}
+                          </a>
+                          <button
+                            className="btn-tesla small"
+                            onClick={() => abrirDocumentoEnPopup(facturaSeleccionada.link_proforma, 'Proforma')}
+                          >
+                            Ver en popup
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {facturaSeleccionada.link_factura && (
+                      <div>
+                        <strong>Factura:</strong>
+                        <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <a
+                            href={facturaSeleccionada.link_factura}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              color: 'var(--accent-color)',
+                              textDecoration: 'underline',
+                              wordBreak: 'break-all'
+                            }}
+                          >
+                            {facturaSeleccionada.link_factura}
+                          </a>
+                          <button
+                            className="btn-tesla small"
+                            onClick={() => abrirDocumentoEnPopup(facturaSeleccionada.link_factura, 'Factura')}
+                          >
+                            Ver en popup
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer-tesla">
+              <button
+                className="btn-tesla secondary"
+                onClick={() => setMostrarModalDetalle(false)}
+              >
+                Cerrar
+              </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Modal Visualizar Documento - Ya no se usa, se abren popups directamente */}
     </div>
   );
 }

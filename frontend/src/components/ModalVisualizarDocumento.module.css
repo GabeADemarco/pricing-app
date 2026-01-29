@@ -1,0 +1,58 @@
+.modalBody {
+  position: relative;
+  width: 100%;
+  height: 70vh;
+  min-height: 500px;
+  display: flex;
+  flex-direction: column;
+}
+
+.iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: var(--bg-secondary);
+  flex: 1;
+}
+
+.loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  color: var(--text-secondary);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--border-color);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.error {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-primary);
+}
+
+.error p {
+  margin-bottom: 1rem;
+  color: var(--text-secondary);
+}
