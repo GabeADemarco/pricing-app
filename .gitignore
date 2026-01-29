@@ -74,3 +74,7 @@ gmaps
 # Scripts de desarrollo local (no commitear)
 start-backend.ps1
 start-frontend.ps1
+
+# Archivos temporales de desarrollo
+variantes-pink-pagado.html
+iniciar.md
