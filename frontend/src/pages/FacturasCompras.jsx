@@ -209,19 +209,30 @@ export default function FacturasCompras() {
     }
   };
 
-  // Función helper para transformar URL de Nextcloud a formato de visualización
+  // Función helper para transformar URL a formato de visualización
   const transformToViewUrl = (url) => {
     if (!url) return null;
     
+    // Si es una URL local (empieza con /api/files/facturas/), construir URL completa
+    if (url.startsWith('/api/files/facturas/')) {
+      const baseApiUrl = API_URL.replace(/\/api$/, '');
+      return `${baseApiUrl}${url}`;
+    }
+    
+    // Si ya es una URL completa local, devolverla tal cual
+    if (url.startsWith('http') && url.includes('/api/files/facturas/')) {
+      return url;
+    }
+    
+    // Compatibilidad con URLs antiguas de Nextcloud
     // Si es una URL de WebDAV (/remote.php/dav/files/), no podemos visualizarla directamente
-    // Estas URLs requieren autenticación y no son públicas
     if (url.includes('/remote.php/dav/files/')) {
       console.error('URL de WebDAV detectada. Esta URL requiere autenticación y no puede visualizarse públicamente.');
       alert('Este documento tiene una URL de acceso directo que requiere autenticación. Por favor, contactá al administrador para regenerar el link público.');
       return null;
     }
     
-    // Si la URL ya tiene el formato completo con openfile=true, devolverla tal cual
+    // Si la URL ya tiene el formato completo con openfile=true (Nextcloud), devolverla tal cual
     if (url.includes('openfile=true')) {
       return url;
     }

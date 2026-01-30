@@ -78,3 +78,7 @@ start-frontend.ps1
 # Archivos temporales de desarrollo
 variantes-pink-pagado.html
 iniciar.md
+
+# Archivos subidos localmente
+backend/uploads/
+uploads/

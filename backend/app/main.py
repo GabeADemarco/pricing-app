@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from datetime import datetime
 import asyncio
-from app.api.endpoints import sync, productos, pricing, admin, auth, usuarios, auditoria, sync_ml, marcas_pm, mla_banlist, producto_banlist, ventas_ml, ventas_fuera_ml, commercial_transactions, comisiones, calculos, configuracion, items_sin_mla, dashboard_ml, erp_sync, ml_catalog, tienda_nube, gbp_parser, notificaciones, offsets_ganancia, rentabilidad, rentabilidad_fuera, vendedores_excluidos, ventas_tienda_nube, rentabilidad_tienda_nube, permisos, markups_tienda, roles, pedidos_preparacion, clientes, pedidos_export, usuarios_erp, pedidos_export_v2, pedidos_export_simple, produccion_banlist, turbo_routing, pedidos_export_local, sale_order_status, facturas_compras, nextcloud
+from pathlib import Path
+from app.api.endpoints import sync, productos, pricing, admin, auth, usuarios, auditoria, sync_ml, marcas_pm, mla_banlist, producto_banlist, ventas_ml, ventas_fuera_ml, commercial_transactions, comisiones, calculos, configuracion, items_sin_mla, dashboard_ml, erp_sync, ml_catalog, tienda_nube, gbp_parser, notificaciones, offsets_ganancia, rentabilidad, rentabilidad_fuera, vendedores_excluidos, ventas_tienda_nube, rentabilidad_tienda_nube, permisos, markups_tienda, roles, pedidos_preparacion, clientes, pedidos_export, usuarios_erp, pedidos_export_v2, pedidos_export_simple, produccion_banlist, turbo_routing, pedidos_export_local, sale_order_status, facturas_compras, nextcloud, uploads
 
 # Variable global para controlar la tarea de background
 _background_task = None
@@ -70,6 +72,13 @@ app.include_router(produccion_banlist.router, prefix="/api", tags=["produccion-b
 app.include_router(turbo_routing.router, prefix="/api", tags=["turbo-routing"])
 app.include_router(facturas_compras.router, prefix="/api", tags=["facturas-compras"])
 app.include_router(nextcloud.router, prefix="/api", tags=["nextcloud"])
+app.include_router(uploads.router, prefix="/api", tags=["uploads"])
+
+# Montar directorio de archivos estáticos para servir uploads
+# Esto permite acceder a los archivos directamente desde /api/files/facturas/{filename}
+uploads_dir = Path(__file__).parent.parent / "uploads" / "facturas"
+uploads_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/api/files/facturas", StaticFiles(directory=str(uploads_dir)), name="facturas_files")
 
 @app.get("/")
 async def root():

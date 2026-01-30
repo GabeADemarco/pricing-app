@@ -69,13 +69,12 @@ export default function FileUploadDropzone({
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('folder', folder);
 
       const token = localStorage.getItem('token');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8002';
-      // Construir URL: remover /api si existe al final, luego agregar /api/nextcloud/upload
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8002/api';
+      // Construir URL: remover /api si existe al final, luego agregar /api/upload/factura
       const baseUrl = API_URL.replace(/\/api$/, '');
-      const uploadUrl = `${baseUrl}/api/nextcloud/upload`;
+      const uploadUrl = `${baseUrl}/api/upload/factura`;
 
       const response = await fetch(uploadUrl, {
         method: 'POST',
@@ -92,15 +91,15 @@ export default function FileUploadDropzone({
 
       const data = await response.json();
       
-      // IMPORTANTE: Siempre usar share_url para visualización pública
-      // file_url es solo para acceso directo con autenticación WebDAV
+      // Construir URL completa para el archivo
+      // file_url viene como /api/files/facturas/{filename}, necesitamos la URL completa
+      const baseApiUrl = API_URL.replace(/\/api$/, '');
+      const fullFileUrl = data.file_url.startsWith('http') 
+        ? data.file_url 
+        : `${baseApiUrl}${data.file_url}`;
+      
       if (onChange) {
-        if (data.share_url) {
-          onChange(data.share_url);
-        } else {
-          // Si no hay share_url, mostrar error porque no podemos visualizar sin share público
-          throw new Error('No se pudo crear el link público de visualización. Por favor, intentá nuevamente.');
-        }
+        onChange(fullFileUrl);
       }
 
       if (onUploadComplete) {
