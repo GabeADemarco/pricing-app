@@ -83,7 +83,6 @@ class FacturaCompra(Base):
     # - iniciado = False  -> borrador (solo visible para COMPRAS / ADMIN)
     # - iniciado = True   -> visible para todos los roles según sus permisos
     iniciado = Column(Boolean, default=False, nullable=False, index=True)
-    listo_para_pagar = Column(Boolean, default=False, nullable=False, index=True)
 
     # =========================================================================
     # CAMPOS DE CARGA_OC_FC_GBP (carga de OC y FC en GBP/ERP)

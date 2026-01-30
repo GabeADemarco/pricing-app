@@ -11,7 +11,7 @@ import ModalVisualizarDocumento from '../components/ModalVisualizarDocumento';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8002';
 
 export default function FacturasCompras() {
-  const { tienePermiso } = usePermisos();
+  const { tienePermiso, rol } = usePermisos();
   const [facturas, setFacturas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [totalFacturas, setTotalFacturas] = useState(0);
@@ -28,7 +28,6 @@ export default function FacturasCompras() {
     page: 1,
     page_size: 50,
     razon_social: '',
-    listo_para_pagar: '',
     oc_cargada: '',
     fc_cargada: '',
     retirado: '',
@@ -44,7 +43,6 @@ export default function FacturasCompras() {
   const page = getFilter('page');
   const pageSize = getFilter('page_size');
   const filtroRazonSocial = getFilter('razon_social');
-  const filtroListoPagar = getFilter('listo_para_pagar');
   const filtroOcCargada = getFilter('oc_cargada');
   const filtroFcCargada = getFilter('fc_cargada');
   const filtroRetirado = getFilter('retirado');
@@ -58,7 +56,6 @@ export default function FacturasCompras() {
   const puedeVer = tienePermiso('facturas_compras.ver');
   const puedeCrear = tienePermiso('facturas_compras.crear');
   const puedeEditarCompras = tienePermiso('facturas_compras.editar_campos_compras');
-  const puedeMarcarListoPagar = tienePermiso('facturas_compras.marcar_listo_pagar');
   const puedeCargarOc = tienePermiso('facturas_compras.cargar_oc');
   const puedeCargarFc = tienePermiso('facturas_compras.cargar_fc');
   const puedeMarcarRetirado = tienePermiso('facturas_compras.marcar_retirado');
@@ -71,7 +68,7 @@ export default function FacturasCompras() {
     if (puedeVer) {
       cargarFacturas();
     }
-  }, [page, pageSize, debouncedSearch, filtroRazonSocial, filtroListoPagar, filtroOcCargada, filtroFcCargada, filtroRetirado, filtroControlado, filtroPagado, puedeVer]);
+  }, [page, pageSize, debouncedSearch, filtroRazonSocial, filtroOcCargada, filtroFcCargada, filtroRetirado, filtroControlado, filtroPagado, puedeVer]);
 
   const cargarFacturas = async () => {
     setLoading(true);
@@ -83,7 +80,6 @@ export default function FacturasCompras() {
 
       if (debouncedSearch) params.append('search', debouncedSearch);
       if (filtroRazonSocial) params.append('razon_social', filtroRazonSocial);
-      if (filtroListoPagar !== '') params.append('listo_para_pagar', filtroListoPagar);
       if (filtroOcCargada !== '') params.append('oc_cargada', filtroOcCargada);
       if (filtroFcCargada !== '') params.append('fc_cargada', filtroFcCargada);
       if (filtroRetirado !== '') params.append('retirado', filtroRetirado);
@@ -341,8 +337,81 @@ export default function FacturasCompras() {
     if (factura.pagado) return { texto: 'Pagado', clase: styles.badgePagado };
     if (factura.fc_cargada) return { texto: 'FC Cargada', clase: styles.badgeFcCargada };
     if (factura.oc_cargada) return { texto: 'OC Cargada', clase: styles.badgeOcCargada };
-    if (factura.listo_para_pagar) return { texto: 'Listo para Pagar', clase: styles.badgeListoPagar };
     return { texto: 'En Proceso', clase: styles.badgeEnProceso };
+  };
+
+  // Determinar qué columnas mostrar según el rol
+  const getColumnasVisibles = useMemo(() => {
+    const columnasGenericas = ['id', 'razon_social', 'proveedor', 'creada_por', 'nro_proforma', 'nro_factura', 'fecha_carga', 'estado'];
+    
+    if (rol === 'COMPRAS' || rol === 'ADMIN' || rol === 'SUPERADMIN') {
+      // COMPRAS ve TODO
+      return [...columnasGenericas, 'oc', 'fc', 'retirado', 'controlado', 'pagado', 'tc', 'plazo', 'forma_pago', 'logistica', 'prioridad', 'observaciones'];
+    }
+    
+    if (rol === 'CARGA_OC_FC_GBP') {
+      // Genericos + Retirado + Controlado + TC + OC + FC
+      return [...columnasGenericas, 'retirado', 'controlado', 'tc', 'oc', 'fc'];
+    }
+    
+    if (rol === 'DEPO') {
+      // Genericos + OC + Retirado + Controlado
+      return [...columnasGenericas, 'oc', 'retirado', 'controlado'];
+    }
+    
+    if (rol === 'TESORERIA') {
+      // Genericos + TC + Plazo + Forma de pago + Pagado
+      return [...columnasGenericas, 'tc', 'plazo', 'forma_pago', 'pagado'];
+    }
+    
+    // Por defecto, solo genéricas
+    return columnasGenericas;
+  }, [rol]);
+
+  // Determinar si una columna específica es visible
+  const esColumnaVisible = (nombreColumna) => {
+    return getColumnasVisibles.includes(nombreColumna);
+  };
+
+  // Funciones helper para acciones por rol
+  const handleMarcarOcCargada = async (facturaId) => {
+    try {
+      await handleActualizarFactura(facturaId, { oc_cargada: true });
+    } catch (error) {
+      // El error ya se muestra en handleActualizarFactura
+    }
+  };
+
+  const handleMarcarFcCargada = async (facturaId) => {
+    try {
+      await handleActualizarFactura(facturaId, { fc_cargada: true });
+    } catch (error) {
+      // El error ya se muestra en handleActualizarFactura
+    }
+  };
+
+  const handleMarcarRetirado = async (facturaId) => {
+    try {
+      await handleActualizarFactura(facturaId, { retirado: true });
+    } catch (error) {
+      // El error ya se muestra en handleActualizarFactura
+    }
+  };
+
+  const handleMarcarControlado = async (facturaId) => {
+    try {
+      await handleActualizarFactura(facturaId, { controlado: true });
+    } catch (error) {
+      // El error ya se muestra en handleActualizarFactura
+    }
+  };
+
+  const handleMarcarPagado = async (facturaId) => {
+    try {
+      await handleActualizarFactura(facturaId, { pagado: true });
+    } catch (error) {
+      // El error ya se muestra en handleActualizarFactura
+    }
   };
 
   if (!puedeVer) {
@@ -393,16 +462,6 @@ export default function FacturasCompras() {
             <option value="">Todas las razones sociales</option>
             <option value="Grupo Gauss">Grupo Gauss</option>
             <option value="Pastoriza">Pastoriza</option>
-          </select>
-
-          <select
-            value={filtroListoPagar}
-            onChange={(e) => updateFilters({ listo_para_pagar: e.target.value, page: 1 })}
-            className={styles.select}
-          >
-            <option value="">Todos los estados</option>
-            <option value="true">Listo para pagar</option>
-            <option value="false">No listo</option>
           </select>
 
           <select
@@ -471,7 +530,6 @@ export default function FacturasCompras() {
             onClick={() => updateFilters({
               search: '',
               razon_social: '',
-              listo_para_pagar: '',
               oc_cargada: '',
               fc_cargada: '',
               retirado: '',
@@ -494,26 +552,29 @@ export default function FacturasCompras() {
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Razón Social</th>
-                <th>Proveedor</th>
-                <th>Creada por</th>
-                <th>Nro Proforma</th>
-                <th>Nro Factura</th>
-                <th>Fecha Carga</th>
-                <th>Estado</th>
-                <th>OC</th>
-                <th>FC</th>
-                <th>Retirado</th>
-                <th>Controlado</th>
-                <th>Pagado</th>
+                {esColumnaVisible('id') && <th>ID</th>}
+                {esColumnaVisible('razon_social') && <th>Razón Social</th>}
+                {esColumnaVisible('proveedor') && <th>Proveedor</th>}
+                {esColumnaVisible('creada_por') && <th>Creada por</th>}
+                {esColumnaVisible('nro_proforma') && <th>Nro Proforma</th>}
+                {esColumnaVisible('nro_factura') && <th>Nro Factura</th>}
+                {esColumnaVisible('fecha_carga') && <th>Fecha Carga</th>}
+                {esColumnaVisible('estado') && <th>Estado</th>}
+                {esColumnaVisible('oc') && <th>OC</th>}
+                {esColumnaVisible('fc') && <th>FC</th>}
+                {esColumnaVisible('retirado') && <th>Retirado</th>}
+                {esColumnaVisible('controlado') && <th>Controlado</th>}
+                {esColumnaVisible('pagado') && <th>Pagado</th>}
+                {esColumnaVisible('tc') && <th>TC</th>}
+                {esColumnaVisible('plazo') && <th>Plazo</th>}
+                {esColumnaVisible('forma_pago') && <th>Forma de Pago</th>}
                 <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {facturas.length === 0 ? (
                 <tr>
-                  <td colSpan="13" className={styles.empty}>
+                  <td colSpan={getColumnasVisibles.length + 1} className={styles.empty}>
                     No se encontraron facturas
                   </td>
                 </tr>
@@ -522,94 +583,148 @@ export default function FacturasCompras() {
                   const estado = getEstadoBadge(factura);
                   return (
                     <tr key={factura.id}>
-                      <td>{factura.id}</td>
-                      <td>{factura.razon_social}</td>
-                      <td>{factura.proveedor_nombre || '-'}</td>
-                      <td>{factura.creado_por_nombre || '-'}</td>
+                      {esColumnaVisible('id') && <td>{factura.id}</td>}
+                      {esColumnaVisible('razon_social') && <td>{factura.razon_social}</td>}
+                      {esColumnaVisible('proveedor') && <td>{factura.proveedor_nombre || '-'}</td>}
+                      {esColumnaVisible('creada_por') && <td>{factura.creado_por_nombre || '-'}</td>}
+                      {esColumnaVisible('nro_proforma') && (
+                        <td>
+                          {factura.nro_proforma ? (
+                            <button
+                              className={styles.linkClickable}
+                              onClick={() => {
+                                if (factura.link_proforma) {
+                                  abrirDocumentoEnPopup(factura.link_proforma, `Proforma ${factura.nro_proforma}`);
+                                }
+                              }}
+                              disabled={!factura.link_proforma}
+                              title={factura.link_proforma ? 'Ver documento en popup' : 'Sin documento'}
+                            >
+                              {factura.nro_proforma}
+                            </button>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                      )}
+                      {esColumnaVisible('nro_factura') && (
+                        <td>
+                          {factura.nro_factura ? (
+                            <button
+                              className={styles.linkClickable}
+                              onClick={() => {
+                                if (factura.link_factura) {
+                                  abrirDocumentoEnPopup(factura.link_factura, `Factura ${factura.nro_factura}`);
+                                }
+                              }}
+                              disabled={!factura.link_factura}
+                              title={factura.link_factura ? 'Ver documento en popup' : 'Sin documento'}
+                            >
+                              {factura.nro_factura}
+                            </button>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                      )}
+                      {esColumnaVisible('fecha_carga') && <td>{formatearFecha(factura.fecha_carga)}</td>}
+                      {esColumnaVisible('estado') && (
+                        <td>
+                          <span className={estado.clase}>{estado.texto}</span>
+                        </td>
+                      )}
+                      {esColumnaVisible('oc') && (
+                        <td>
+                          {factura.oc_cargada ? (
+                            <span className={styles.badgeSi}>✓ {formatearFecha(factura.oc_fecha)}</span>
+                          ) : (
+                            <span className={styles.badgeNo}>✗</span>
+                          )}
+                        </td>
+                      )}
+                      {esColumnaVisible('fc') && (
+                        <td>
+                          {factura.fc_cargada ? (
+                            <span className={styles.badgeSi}>✓ {formatearFecha(factura.fc_fecha)}</span>
+                          ) : (
+                            <span className={styles.badgeNo}>✗</span>
+                          )}
+                        </td>
+                      )}
+                      {esColumnaVisible('retirado') && (
+                        <td>
+                          {factura.retirado ? (
+                            <span className={styles.badgeSi}>✓ {formatearFecha(factura.retirado_fecha)}</span>
+                          ) : (
+                            <span className={styles.badgeNo}>✗</span>
+                          )}
+                        </td>
+                      )}
+                      {esColumnaVisible('controlado') && (
+                        <td>
+                          {factura.controlado ? (
+                            <span className={styles.badgeSi}>✓ {formatearFecha(factura.controlado_fecha)}</span>
+                          ) : (
+                            <span className={styles.badgeNo}>✗</span>
+                          )}
+                        </td>
+                      )}
+                      {esColumnaVisible('pagado') && (
+                        <td>
+                          {factura.pagado ? (
+                            <span className={styles.badgeSi}>✓ {formatearFecha(factura.pagado_fecha)}</span>
+                          ) : (
+                            <span className={styles.badgeNo}>✗</span>
+                          )}
+                        </td>
+                      )}
+                      {esColumnaVisible('tc') && <td>{factura.tipo_cambio || '-'}</td>}
+                      {esColumnaVisible('plazo') && <td>{factura.plazo || '-'}</td>}
+                      {esColumnaVisible('forma_pago') && <td>{factura.forma_pago || '-'}</td>}
                       <td>
-                        {factura.nro_proforma ? (
+                        <div className={styles.accionesContainer}>
                           <button
-                            className={styles.linkClickable}
-                            onClick={() => {
-                              if (factura.link_proforma) {
-                                abrirDocumentoEnPopup(factura.link_proforma, `Proforma ${factura.nro_proforma}`);
-                              }
-                            }}
-                            disabled={!factura.link_proforma}
-                            title={factura.link_proforma ? 'Ver documento en popup' : 'Sin documento'}
+                            className={styles.btnVer}
+                            onClick={() => handleVerDetalle(factura)}
                           >
-                            {factura.nro_proforma}
+                            Ver
                           </button>
-                        ) : (
-                          '-'
-                        )}
-                      </td>
-                      <td>
-                        {factura.nro_factura ? (
-                          <button
-                            className={styles.linkClickable}
-                            onClick={() => {
-                              if (factura.link_factura) {
-                                abrirDocumentoEnPopup(factura.link_factura, `Factura ${factura.nro_factura}`);
-                              }
-                            }}
-                            disabled={!factura.link_factura}
-                            title={factura.link_factura ? 'Ver documento en popup' : 'Sin documento'}
-                          >
-                            {factura.nro_factura}
-                          </button>
-                        ) : (
-                          '-'
-                        )}
-                      </td>
-                      <td>{formatearFecha(factura.fecha_carga)}</td>
-                      <td>
-                        <span className={estado.clase}>{estado.texto}</span>
-                      </td>
-                      <td>
-                        {factura.oc_cargada ? (
-                          <span className={styles.badgeSi}>✓ {formatearFecha(factura.oc_fecha)}</span>
-                        ) : (
-                          <span className={styles.badgeNo}>✗</span>
-                        )}
-                      </td>
-                      <td>
-                        {factura.fc_cargada ? (
-                          <span className={styles.badgeSi}>✓ {formatearFecha(factura.fc_fecha)}</span>
-                        ) : (
-                          <span className={styles.badgeNo}>✗</span>
-                        )}
-                      </td>
-                      <td>
-                        {factura.retirado ? (
-                          <span className={styles.badgeSi}>✓ {formatearFecha(factura.retirado_fecha)}</span>
-                        ) : (
-                          <span className={styles.badgeNo}>✗</span>
-                        )}
-                      </td>
-                      <td>
-                        {factura.controlado ? (
-                          <span className={styles.badgeSi}>✓ {formatearFecha(factura.controlado_fecha)}</span>
-                        ) : (
-                          <span className={styles.badgeNo}>✗</span>
-                        )}
-                      </td>
-                      <td>
-                        {factura.pagado ? (
-                          <span className={styles.badgeSi}>✓ {formatearFecha(factura.pagado_fecha)}</span>
-                        ) : (
-                          <span className={styles.badgeNo}>✗</span>
-                        )}
-                      </td>
-                      <td>
-                        <button
-                          className={styles.btnVer}
-                          onClick={() => handleVerDetalle(factura)}
-                        >
-                          Ver
-                        </button>
-                        {!factura.iniciado && puedeEditarCompras && (
-                          <>
+                          
+                          {/* COMPRAS: Editar borradores e iniciar proceso */}
+                          {!factura.iniciado && puedeEditarCompras && (
+                            <>
+                              <button
+                                className={styles.btnSecundario}
+                                onClick={() => {
+                                  setFacturaAEditar(factura);
+                                  setMostrarModalEditar(true);
+                                }}
+                              >
+                                Editar
+                              </button>
+                              <button
+                                className={styles.btnSecundario}
+                                onClick={() => {
+                                  if (!window.confirm('¿Iniciar el proceso de esta factura? Los demás roles podrán verla.')) return;
+                                  handleIniciarProceso(factura.id);
+                                }}
+                              >
+                                Iniciar proceso
+                              </button>
+                              <button
+                                className={styles.btnPeligro}
+                                onClick={() => {
+                                  if (!window.confirm('¿Eliminar este borrador de factura? Esta acción no se puede deshacer.')) return;
+                                  handleEliminarBorrador(factura.id);
+                                }}
+                              >
+                                Eliminar borrador
+                              </button>
+                            </>
+                          )}
+                          
+                          {/* COMPRAS: Editar facturas iniciadas */}
+                          {factura.iniciado && puedeEditarCompras && (
                             <button
                               className={styles.btnSecundario}
                               onClick={() => {
@@ -619,26 +734,73 @@ export default function FacturasCompras() {
                             >
                               Editar
                             </button>
+                          )}
+                          
+                          {/* CARGA_OC_FC_GBP: Cargar OC */}
+                          {factura.iniciado && puedeCargarOc && !factura.oc_cargada && (
                             <button
-                              className={styles.btnSecundario}
+                              className={styles.btnAccion}
                               onClick={() => {
-                                if (!window.confirm('¿Iniciar el proceso de esta factura? Los demás roles podrán verla.')) return;
-                                handleIniciarProceso(factura.id);
+                                if (!window.confirm('¿Marcar OC como cargada?')) return;
+                                handleMarcarOcCargada(factura.id);
                               }}
                             >
-                              Iniciar proceso
+                              Cargar OC
                             </button>
+                          )}
+                          
+                          {/* CARGA_OC_FC_GBP: Cargar FC */}
+                          {factura.iniciado && puedeCargarFc && !factura.fc_cargada && factura.controlado && (
                             <button
-                              className={styles.btnPeligro}
+                              className={styles.btnAccion}
                               onClick={() => {
-                                if (!window.confirm('¿Eliminar este borrador de factura? Esta acción no se puede deshacer.')) return;
-                                handleEliminarBorrador(factura.id);
+                                if (!window.confirm('¿Marcar FC como cargada?')) return;
+                                handleMarcarFcCargada(factura.id);
                               }}
                             >
-                              Eliminar borrador
+                              Cargar FC
                             </button>
-                          </>
-                        )}
+                          )}
+                          
+                          {/* DEPO: Marcar Retirado */}
+                          {factura.iniciado && puedeMarcarRetirado && !factura.retirado && (
+                            <button
+                              className={styles.btnAccion}
+                              onClick={() => {
+                                if (!window.confirm('¿Marcar como retirado?')) return;
+                                handleMarcarRetirado(factura.id);
+                              }}
+                            >
+                              Marcar Retirado
+                            </button>
+                          )}
+                          
+                          {/* DEPO: Marcar Controlado */}
+                          {factura.iniciado && puedeMarcarControlado && !factura.controlado && factura.retirado && (
+                            <button
+                              className={styles.btnAccion}
+                              onClick={() => {
+                                if (!window.confirm('¿Marcar como controlado?')) return;
+                                handleMarcarControlado(factura.id);
+                              }}
+                            >
+                              Marcar Controlado
+                            </button>
+                          )}
+                          
+                          {/* TESORERIA: Marcar Pagado */}
+                          {factura.iniciado && puedeMarcarPagado && !factura.pagado && (
+                            <button
+                              className={styles.btnAccion}
+                              onClick={() => {
+                                if (!window.confirm('¿Marcar como pagado?')) return;
+                                handleMarcarPagado(factura.id);
+                              }}
+                            >
+                              Marcar Pagado
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

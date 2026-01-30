@@ -66,7 +66,6 @@ class FacturaCompraUpdate(BaseModel):
     plazo: Optional[str] = None
     tipo_cambio: Optional[str] = None
     iniciado: Optional[bool] = None
-    listo_para_pagar: Optional[bool] = None
     
     # Campos de CARGA_OC_FC_GBP
     oc_cargada: Optional[bool] = None
@@ -99,7 +98,6 @@ class FacturaCompraResponse(BaseModel):
     plazo: Optional[str] = None
     tipo_cambio: Optional[str] = None
     iniciado: bool
-    listo_para_pagar: bool
     
     # Campos de CARGA_OC_FC_GBP
     oc_cargada: bool
@@ -163,7 +161,6 @@ async def listar_facturas_compras(
     page: int = Query(1, ge=1, description="Número de página"),
     page_size: int = Query(50, ge=1, le=1000, description="Cantidad de registros por página"),
     razon_social: Optional[RazonSocial] = Query(None, description="Filtrar por razón social"),
-    listo_para_pagar: Optional[bool] = Query(None, description="Filtrar por listo para pagar"),
     oc_cargada: Optional[bool] = Query(None, description="Filtrar por OC cargada"),
     fc_cargada: Optional[bool] = Query(None, description="Filtrar por FC cargada"),
     retirado: Optional[bool] = Query(None, description="Filtrar por retirado"),
@@ -189,9 +186,6 @@ async def listar_facturas_compras(
     # Aplicar filtros
     if razon_social:
         query = query.filter(FacturaCompra.razon_social == razon_social)
-    
-    if listo_para_pagar is not None:
-        query = query.filter(FacturaCompra.listo_para_pagar == listo_para_pagar)
     
     if oc_cargada is not None:
         query = query.filter(FacturaCompra.oc_cargada == oc_cargada)
@@ -362,7 +356,6 @@ async def actualizar_factura_compra(
         'razon_social', 'proveedor_id', 'proveedor_nombre', 'nro_proforma',
         'link_proforma', 'logistica', 'prioridad', 'nro_factura', 'link_factura',
         'forma_pago', 'plazo', 'tipo_cambio'
-        # Nota: 'listo_para_pagar' NO está aquí porque tiene su propia verificación de permisos más abajo
     }
     if any(campo in update_data for campo in campos_compras):
         if not verificar_permiso(db, current_user, 'facturas_compras.editar_campos_compras'):
@@ -371,20 +364,18 @@ async def actualizar_factura_compra(
                 detail="No tienes permiso para editar campos de COMPRAS"
             )
     
-    # Marcar listo para pagar (acción especial con permiso específico)
-    if 'listo_para_pagar' in update_data and update_data['listo_para_pagar']:
-        if not verificar_permiso(db, current_user, 'facturas_compras.marcar_listo_pagar'):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tienes permiso para marcar como listo para pagar"
-            )
-    
     # Campos de CARGA_OC_FC_GBP
     if 'oc_cargada' in update_data and update_data['oc_cargada']:
         if not verificar_permiso(db, current_user, 'facturas_compras.cargar_oc'):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes permiso para cargar OC"
+            )
+        # Validar que el proceso esté iniciado
+        if not factura.iniciado:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede cargar OC sin que el proceso esté iniciado"
             )
         # Establecer fecha automáticamente
         update_data['oc_fecha'] = datetime.now(UTC)
@@ -395,11 +386,11 @@ async def actualizar_factura_compra(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes permiso para cargar FC"
             )
-        # Validar que esté retirado antes de cargar FC
-        if not factura.retirado:
+        # Validar que esté controlado antes de cargar FC
+        if not factura.controlado:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No se puede cargar FC sin que la factura esté retirada"
+                detail="No se puede cargar FC sin que la factura esté controlada"
             )
         # Establecer fecha automáticamente
         update_data['fc_fecha'] = datetime.now(UTC)
@@ -411,6 +402,12 @@ async def actualizar_factura_compra(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes permiso para marcar como retirado"
             )
+        # Validar que el proceso esté iniciado
+        if not factura.iniciado:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede marcar como retirado sin que el proceso esté iniciado"
+            )
         # Establecer fecha automáticamente
         update_data['retirado_fecha'] = datetime.now(UTC)
     
@@ -420,10 +417,17 @@ async def actualizar_factura_compra(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes permiso para marcar como controlado"
             )
-        # Validación soft: avisar si no hay OC pero no bloquear
-        if not factura.oc_cargada:
-            # Solo avisar, no bloquear
-            pass
+        # Validar que el proceso esté iniciado Y que esté retirado
+        if not factura.iniciado:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede marcar como controlado sin que el proceso esté iniciado"
+            )
+        if not factura.retirado:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede marcar como controlado sin que la factura esté retirada"
+            )
         # Establecer fecha automáticamente
         update_data['controlado_fecha'] = datetime.now(UTC)
     
@@ -433,6 +437,12 @@ async def actualizar_factura_compra(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes permiso para marcar como pagado"
+            )
+        # Validar que el proceso esté iniciado
+        if not factura.iniciado:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede marcar como pagado sin que el proceso esté iniciado"
             )
         # Establecer fecha automáticamente
         update_data['pagado_fecha'] = datetime.now(UTC)

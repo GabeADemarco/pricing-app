@@ -19,11 +19,12 @@ export default function ModalEditarFactura({ factura, onClose, onActualizar }) {
 
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [datosOriginales, setDatosOriginales] = useState(null);
 
   // Cargar datos de la factura al montar el componente
   useEffect(() => {
     if (factura) {
-      setFormData({
+      const datosIniciales = {
         razon_social: factura.razon_social || 'Grupo Gauss',
         proveedor_nombre: factura.proveedor_nombre || '',
         nro_proforma: factura.nro_proforma || '',
@@ -35,7 +36,9 @@ export default function ModalEditarFactura({ factura, onClose, onActualizar }) {
         forma_pago: factura.forma_pago || 'CONTADO',
         plazo: factura.plazo || '',
         tipo_cambio: factura.tipo_cambio || '',
-      });
+      };
+      setFormData(datosIniciales);
+      setDatosOriginales(datosIniciales);
     }
   }, [factura]);
 
@@ -57,6 +60,60 @@ export default function ModalEditarFactura({ factura, onClose, onActualizar }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     e.stopPropagation();
+
+    // Si la factura está iniciada, verificar si se modificaron campos que ya tenían datos
+    if (factura.iniciado && datosOriginales) {
+      const camposModificados = [];
+      const camposConDatosOriginales = [];
+      
+      // Campos a verificar
+      const camposAVerificar = [
+        'razon_social', 'proveedor_nombre', 'nro_proforma', 'link_proforma',
+        'logistica', 'prioridad', 'nro_factura', 'link_factura',
+        'forma_pago', 'plazo', 'tipo_cambio'
+      ];
+      
+      camposAVerificar.forEach(campo => {
+        const valorOriginal = datosOriginales[campo];
+        const valorNuevo = formData[campo];
+        
+        // Si el campo tenía datos originales (no vacío)
+        if (valorOriginal && valorOriginal.toString().trim() !== '') {
+          camposConDatosOriginales.push(campo);
+          
+          // Si el valor cambió
+          if (valorOriginal !== valorNuevo) {
+            camposModificados.push(campo);
+          }
+        }
+      });
+      
+      // Si se modificaron campos que ya tenían datos, mostrar aviso
+      if (camposModificados.length > 0) {
+        const nombresCampos = camposModificados.map(campo => {
+          const nombres = {
+            'razon_social': 'Razón Social',
+            'proveedor_nombre': 'Proveedor',
+            'nro_proforma': 'Nro Proforma',
+            'link_proforma': 'Link Proforma',
+            'logistica': 'Logística',
+            'prioridad': 'Prioridad',
+            'nro_factura': 'Nro Factura',
+            'link_factura': 'Link Factura',
+            'forma_pago': 'Forma de Pago',
+            'plazo': 'Plazo',
+            'tipo_cambio': 'Tipo de Cambio'
+          };
+          return nombres[campo] || campo;
+        });
+        
+        const mensaje = `Estás modificando campos que ya contenían datos:\n\n${nombresCampos.join(', ')}\n\nLos demás sectores participantes en el proceso potencialmente necesitarán actualizar la información en sus respectivas tareas que pueden o no estar completas.\n\n¿Deseas continuar con los cambios?`;
+        
+        if (!window.confirm(mensaje)) {
+          return; // Cancelar si el usuario no confirma
+        }
+      }
+    }
 
     setLoading(true);
 
