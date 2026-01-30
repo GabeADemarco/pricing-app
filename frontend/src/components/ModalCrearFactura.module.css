@@ -64,6 +64,13 @@
   margin-top: var(--spacing-xs);
 }
 
+.helpText {
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  margin-top: var(--spacing-xs);
+  font-style: italic;
+}
+
 .footerLeft {
   margin-right: auto;
   display: flex;

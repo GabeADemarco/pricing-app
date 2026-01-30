@@ -249,7 +249,9 @@ export default function ModalCrearFactura({ onClose, onCrear }) {
 
             {/* Nro Factura */}
             <div className={styles.formGroup}>
-              <label className={styles.label}>Nro Factura</label>
+              <label className={styles.label}>
+                Nro Factura <span className={styles.required} title="Requerido si se carga factura">*</span>
+              </label>
               <input
                 type="text"
                 name="nro_factura"
@@ -258,20 +260,31 @@ export default function ModalCrearFactura({ onClose, onCrear }) {
                 className={styles.input}
                 placeholder="Número de factura"
               />
+              {errors.nro_factura && (
+                <span className={styles.error}>{errors.nro_factura}</span>
+              )}
             </div>
 
             {/* Link Factura */}
             <div className={styles.formGroup}>
-              <label className={styles.label}>Link Factura</label>
+              <label className={styles.label}>
+                Link Factura <span className={styles.required} title="Requerido si se carga factura">*</span>
+              </label>
               <FileUploadDropzone
                 value={formData.link_factura}
                 onChange={(url) => {
                   setFormData(prev => ({ ...prev, link_factura: url }));
+                  if (errors.link_factura) {
+                    setErrors(prev => ({ ...prev, link_factura: null }));
+                  }
                 }}
                 folder="Facturas"
                 accept="application/pdf,image/*"
                 maxSizeMB={10}
               />
+              {errors.link_factura && (
+                <span className={styles.error}>{errors.link_factura}</span>
+              )}
             </div>
 
             {/* Forma de Pago */}
