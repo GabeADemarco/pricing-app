@@ -75,6 +75,7 @@ app.include_router(nextcloud.router, prefix="/api", tags=["nextcloud"])
 app.include_router(uploads.router, prefix="/api", tags=["uploads"])
 
 # Montar directorio de archivos estáticos para servir uploads
+# IMPORTANTE: Debe ir después de todos los routers para evitar conflictos de rutas
 # Esto permite acceder a los archivos directamente desde /api/files/facturas/{filename}
 uploads_dir = Path(__file__).parent.parent / "uploads" / "facturas"
 uploads_dir.mkdir(parents=True, exist_ok=True)

@@ -109,35 +109,7 @@ async def upload_factura_file(
         )
 
 
-@router.get("/factura/{filename}")
-async def get_factura_file(
-    filename: str,
-    db: Session = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user)
-):
-    """
-    Sirve un archivo de factura/proforma.
-    Requiere autenticación para seguridad.
-    """
-    file_path = FACTURAS_DIR / filename
-    
-    if not file_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Archivo no encontrado"
-        )
-    
-    # Validar que el archivo está dentro del directorio permitido (seguridad)
-    try:
-        file_path.resolve().relative_to(FACTURAS_DIR.resolve())
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acceso denegado"
-        )
-    
-    return FileResponse(
-        path=str(file_path),
-        media_type="application/pdf" if filename.lower().endswith('.pdf') else "image/jpeg",
-        filename=filename
-    )
+# Nota: Los archivos se sirven directamente mediante StaticFiles montado en main.py
+# en /api/files/facturas/{filename}. Este endpoint no es necesario si usamos StaticFiles,
+# pero lo dejamos como alternativa si necesitamos autenticación en el futuro.
+# Por ahora, StaticFiles permite acceso directo sin autenticación (los archivos están en el servidor).

@@ -293,9 +293,7 @@ export default function FacturasCompras() {
     }
     
     // Abrir popup sin barras de navegación pero con scroll y zoom
-    // NOTA: Limitación conocida de Nextcloud: a veces el documento no se visualiza correctamente
-    // en la primera carga del popup. La solución es cerrar el popup y volver a abrirlo.
-    // Este comportamiento también ocurre en el sistema actual de Google Sheets.
+    // Con archivos locales, no debería haber problemas de visualización como con Nextcloud
     const popup = window.open(
       viewUrl,
       `doc_${Date.now()}`,
