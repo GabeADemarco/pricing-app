@@ -56,12 +56,29 @@ export default function ModalCrearFactura({ onClose, onCrear }) {
       newErrors.proveedor_nombre = 'El proveedor es requerido';
     }
 
-    if (!formData.nro_proforma?.trim()) {
-      newErrors.nro_proforma = 'El número de proforma es requerido';
-    }
-
-    if (!formData.link_proforma?.trim()) {
-      newErrors.link_proforma = 'El link de proforma es requerido';
+    // Validar que haya al menos un documento completo (proforma o factura)
+    const tieneProforma = formData.nro_proforma?.trim() && formData.link_proforma?.trim();
+    const tieneFactura = formData.nro_factura?.trim() && formData.link_factura?.trim();
+    
+    if (!tieneProforma && !tieneFactura) {
+      newErrors.nro_proforma = 'Debe cargar al menos un documento (proforma o factura)';
+      newErrors.nro_factura = 'Debe cargar al menos un documento (proforma o factura)';
+    } else {
+      // Si tiene proforma, validar que tenga número y link
+      if (formData.nro_proforma?.trim() && !formData.link_proforma?.trim()) {
+        newErrors.link_proforma = 'El link de proforma es requerido si se especifica el número';
+      }
+      if (formData.link_proforma?.trim() && !formData.nro_proforma?.trim()) {
+        newErrors.nro_proforma = 'El número de proforma es requerido si se especifica el link';
+      }
+      
+      // Si tiene factura, validar que tenga número y link
+      if (formData.nro_factura?.trim() && !formData.link_factura?.trim()) {
+        newErrors.link_factura = 'El link de factura es requerido si se especifica el número';
+      }
+      if (formData.link_factura?.trim() && !formData.nro_factura?.trim()) {
+        newErrors.nro_factura = 'El número de factura es requerido si se especifica el link';
+      }
     }
 
     if (!formData.logistica) {
@@ -74,14 +91,6 @@ export default function ModalCrearFactura({ onClose, onCrear }) {
 
     if (!formData.forma_pago) {
       newErrors.forma_pago = 'La forma de pago es requerida';
-    }
-
-    if (!formData.nro_factura?.trim()) {
-      newErrors.nro_factura = 'El número de factura es requerido';
-    }
-
-    if (!formData.link_factura?.trim()) {
-      newErrors.link_factura = 'El link de factura es requerido';
     }
 
     setErrors(newErrors);
@@ -165,7 +174,7 @@ export default function ModalCrearFactura({ onClose, onCrear }) {
             {/* Nro Proforma */}
             <div className={styles.formGroup}>
               <label className={styles.label}>
-                Nro Proforma <span className={styles.required}>*</span>
+                Nro Proforma <span className={styles.required} title="Requerido si se carga proforma">*</span>
               </label>
               <input
                 type="text"
@@ -178,12 +187,15 @@ export default function ModalCrearFactura({ onClose, onCrear }) {
               {errors.nro_proforma && (
                 <span className={styles.error}>{errors.nro_proforma}</span>
               )}
+              <small className={styles.helpText}>
+                Debe cargar al menos un documento completo (Proforma o Factura)
+              </small>
             </div>
 
             {/* Link Proforma */}
             <div className={styles.formGroup}>
               <label className={styles.label}>
-                Link Proforma <span className={styles.required}>*</span>
+                Link Proforma <span className={styles.required} title="Requerido si se carga proforma">*</span>
               </label>
               <FileUploadDropzone
                 value={formData.link_proforma}

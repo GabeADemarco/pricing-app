@@ -446,20 +446,34 @@ async def actualizar_factura_compra(
             campos_faltantes.append('Razón Social')
         if not factura.proveedor_nombre or not factura.proveedor_nombre.strip():
             campos_faltantes.append('Proveedor')
-        if not factura.nro_proforma or not factura.nro_proforma.strip():
-            campos_faltantes.append('Nro Proforma')
-        if not factura.link_proforma or not factura.link_proforma.strip():
-            campos_faltantes.append('Link Proforma')
+        
+        # Validar que haya al menos un documento completo (proforma o factura)
+        tiene_proforma = (factura.nro_proforma and factura.nro_proforma.strip() and 
+                         factura.link_proforma and factura.link_proforma.strip())
+        tiene_factura = (factura.nro_factura and factura.nro_factura.strip() and 
+                        factura.link_factura and factura.link_factura.strip())
+        
+        if not tiene_proforma and not tiene_factura:
+            campos_faltantes.append('Al menos un documento completo (Proforma o Factura con número y link)')
+        else:
+            # Si tiene proforma parcial, validar que tenga ambos campos
+            if (factura.nro_proforma and factura.nro_proforma.strip()) and not (factura.link_proforma and factura.link_proforma.strip()):
+                campos_faltantes.append('Link Proforma (requerido si se especifica número)')
+            if (factura.link_proforma and factura.link_proforma.strip()) and not (factura.nro_proforma and factura.nro_proforma.strip()):
+                campos_faltantes.append('Nro Proforma (requerido si se especifica link)')
+            
+            # Si tiene factura parcial, validar que tenga ambos campos
+            if (factura.nro_factura and factura.nro_factura.strip()) and not (factura.link_factura and factura.link_factura.strip()):
+                campos_faltantes.append('Link Factura (requerido si se especifica número)')
+            if (factura.link_factura and factura.link_factura.strip()) and not (factura.nro_factura and factura.nro_factura.strip()):
+                campos_faltantes.append('Nro Factura (requerido si se especifica link)')
+        
         if not factura.logistica:
             campos_faltantes.append('Logística')
         if not factura.prioridad:
             campos_faltantes.append('Prioridad')
         if not factura.forma_pago:
             campos_faltantes.append('Forma de Pago')
-        if not factura.nro_factura or not factura.nro_factura.strip():
-            campos_faltantes.append('Nro Factura')
-        if not factura.link_factura or not factura.link_factura.strip():
-            campos_faltantes.append('Link Factura')
         
         if campos_faltantes:
             raise HTTPException(
