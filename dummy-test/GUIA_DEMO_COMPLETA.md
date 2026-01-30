@@ -2,6 +2,8 @@
 
 Esta guía permite preparar y ejecutar la demo del Pricing App con funcionalidad idéntica al ambiente de desarrollo. Incluye la demo estática (solo Facturas) y la demo completa (app entera con backend).
 
+**Repositorio:** https://github.com/GabeADemarco/pricing-app
+
 ---
 
 ## Tabla de contenidos
@@ -86,7 +88,7 @@ Ver [README.md](README.md) para el flujo de prueba.
 ### 4.1. Clonar el repositorio
 
 ```powershell
-git clone <URL_DEL_REPO> pricing-app
+git clone https://github.com/GabeADemarco/pricing-app.git pricing-app
 cd pricing-app
 ```
 
