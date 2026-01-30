@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import styles from '../pages/Admin.module.css';
+import adminStyles from '../pages/Admin.module.css';
+import styles from './PanelPermisos.module.css';
 
 const CATEGORIAS_NOMBRE = {
   productos: 'Productos',
@@ -40,11 +41,9 @@ export default function PanelRoles() {
     descripcion: ''
   });
 
-  // Estado para categorías colapsables
-  const [categoriasExpandidas, setCategoriasExpandidas] = useState({});
   const [busquedaPermiso, setBusquedaPermiso] = useState('');
 
-  const API_URL = 'https://pricing.gaussonline.com.ar/api';
+  const API_URL = import.meta.env.VITE_API_URL;
 
   useEffect(() => {
     cargarDatos();
@@ -245,28 +244,9 @@ export default function PanelRoles() {
     setMostrarFormRol(true);
   };
 
-  const toggleCategoria = (categoria) => {
-    setCategoriasExpandidas(prev => ({
-      ...prev,
-      [categoria]: !prev[categoria]
-    }));
-  };
-
-  const expandirTodas = () => {
-    const todas = {};
-    Object.keys(catalogo).forEach(cat => {
-      todas[cat] = true;
-    });
-    setCategoriasExpandidas(todas);
-  };
-
-  const colapsarTodas = () => {
-    setCategoriasExpandidas({});
-  };
-
   if (loading) {
     return (
-      <div className={styles.section}>
+      <div className={adminStyles.section}>
         <div style={{ textAlign: 'center', padding: '40px' }}>
           Cargando roles y permisos...
         </div>
@@ -291,7 +271,7 @@ export default function PanelRoles() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px' }}>
         {/* Panel izquierdo: Lista de roles */}
-        <div className={styles.section}>
+        <div className={adminStyles.section}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h3 style={{ margin: 0 }}>Roles</h3>
             <button
@@ -474,7 +454,7 @@ export default function PanelRoles() {
         </div>
 
         {/* Panel derecho: Permisos del rol seleccionado */}
-        <div className={styles.section} style={{ display: 'flex', flexDirection: 'column', maxHeight: '75vh' }}>
+        <div className={`${adminStyles.section} ${styles.permisosSection}`}>
           {rolSeleccionado ? (
             <>
               <div style={{
@@ -495,53 +475,7 @@ export default function PanelRoles() {
                       </p>
                     )}
                   </div>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <input
-                      type="text"
-                      placeholder="🔍 Buscar permiso..."
-                      value={busquedaPermiso}
-                      onChange={(e) => setBusquedaPermiso(e.target.value)}
-                      style={{
-                        padding: '6px 10px',
-                        fontSize: '12px',
-                        background: 'var(--bg-primary)',
-                        color: 'var(--text-primary)',
-                        border: '1px solid var(--border-primary)',
-                        borderRadius: '4px',
-                        width: '200px',
-                        marginRight: '8px'
-                      }}
-                    />
-                    <div style={{ display: 'flex', gap: '4px', marginRight: '8px' }}>
-                      <button
-                        onClick={expandirTodas}
-                        style={{
-                          padding: '4px 8px',
-                          fontSize: '11px',
-                          background: 'var(--bg-tertiary)',
-                          color: 'var(--text-secondary)',
-                          border: '1px solid var(--border-primary)',
-                          borderRadius: '4px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Expandir
-                      </button>
-                      <button
-                        onClick={colapsarTodas}
-                        style={{
-                          padding: '4px 8px',
-                          fontSize: '11px',
-                          background: 'var(--bg-tertiary)',
-                          color: 'var(--text-secondary)',
-                          border: '1px solid var(--border-primary)',
-                          borderRadius: '4px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Colapsar
-                      </button>
-                    </div>
+                  <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'center' }}>
                     {rolSeleccionado.codigo !== 'SUPERADMIN' && (
                       <>
                         <button
@@ -663,129 +597,110 @@ export default function PanelRoles() {
               )}
 
               {/* Lista de permisos por categoria */}
-              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {Object.entries(catalogo).map(([categoria, permisos]) => {
-                  // Filtrar permisos según búsqueda
-                  const permisosFiltrados = busquedaPermiso.trim()
-                    ? permisos.filter(p => 
-                        p.nombre.toLowerCase().includes(busquedaPermiso.toLowerCase()) ||
-                        p.descripcion?.toLowerCase().includes(busquedaPermiso.toLowerCase()) ||
-                        p.codigo.toLowerCase().includes(busquedaPermiso.toLowerCase())
-                      )
-                    : permisos;
-                  
-                  // Si no hay permisos que coincidan, no mostrar la categoría
-                  if (permisosFiltrados.length === 0) return null;
-                  
-                  const expandida = categoriasExpandidas[categoria] || busquedaPermiso.trim() !== '';
-                  const permisosActivos = permisosFiltrados.filter(p => permisosRol.includes(p.codigo)).length;
-
-                  return (
-                  <div key={categoria} style={{
-                    border: '1px solid var(--border-primary)',
-                    borderRadius: '8px',
-                    overflow: 'hidden'
-                  }}>
-                    <div
-                      onClick={() => toggleCategoria(categoria)}
-                      style={{
-                        padding: '10px 16px',
-                        background: 'var(--bg-secondary)',
-                        fontWeight: '600',
-                        borderBottom: expandida ? '1px solid var(--border-primary)' : 'none',
-                        color: 'var(--text-primary)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        userSelect: 'none'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{
-                          display: 'inline-block',
-                          transition: 'transform 0.2s',
-                          transform: expandida ? 'rotate(90deg)' : 'rotate(0deg)'
-                        }}>
-                          ▶
-                        </span>
-                        {CATEGORIAS_NOMBRE[categoria] || categoria}
-                      </div>
-                      <span style={{
-                        fontSize: '12px',
-                        color: 'var(--text-secondary)',
-                        fontWeight: 'normal'
-                      }}>
-                        {permisosActivos}/{permisosFiltrados.length}
-                        {busquedaPermiso.trim() && permisosFiltrados.length !== permisos.length && (
-                          <span style={{ marginLeft: '4px', fontSize: '11px', opacity: 0.7 }}>
-                            (de {permisos.length})
-                          </span>
-                        )}
-                      </span>
+              <div className={styles.permisosWrapper}>
+                {/* Header con buscador */}
+                <div className={styles.permisosHeader}>
+                  <div className={styles.headerRow}>
+                    <div className={styles.searchBox}>
+                      <input
+                        type="text"
+                        placeholder="🔍 Buscar permiso por nombre, código o descripción..."
+                        value={busquedaPermiso}
+                        onChange={(e) => setBusquedaPermiso(e.target.value)}
+                        className={styles.searchInput}
+                      />
                     </div>
-                    {expandida && (
-                    <div style={{ padding: '8px 16px', background: 'var(--bg-primary)', maxHeight: '300px', overflowY: 'auto' }}>
-                      {permisosFiltrados.map(permiso => {
-                        const tienePermiso = permisosRol.includes(permiso.codigo);
-                        const esSuperadmin = rolSeleccionado.codigo === 'SUPERADMIN';
-
-                        return (
-                          <div
-                            key={permiso.codigo}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              padding: '8px 0',
-                              borderBottom: '1px solid var(--bg-tertiary)'
-                            }}
-                          >
-                            <div style={{ flex: 1 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{permiso.nombre}</span>
-                                {permiso.es_critico && (
-                                  <span style={{
-                                    fontSize: '10px',
-                                    padding: '2px 6px',
-                                    background: 'var(--error-bg)',
-                                    color: 'var(--error-text)',
-                                    borderRadius: '4px'
-                                  }}>
-                                    CRITICO
-                                  </span>
-                                )}
-                              </div>
-                              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                                {permiso.codigo}
-                                {permiso.descripcion && ` - ${permiso.descripcion}`}
-                              </div>
-                            </div>
-                            <label style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              cursor: esSuperadmin ? 'not-allowed' : 'pointer'
-                            }}>
-                              <input
-                                type="checkbox"
-                                checked={tienePermiso}
-                                onChange={() => togglePermisoRol(permiso.codigo)}
-                                disabled={esSuperadmin}
-                                style={{
-                                  width: '18px',
-                                  height: '18px',
-                                  cursor: esSuperadmin ? 'not-allowed' : 'pointer'
-                                }}
-                              />
-                            </label>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    )}
                   </div>
-                  );
-                })}
+                </div>
+
+                {/* Scroll de permisos */}
+                <div className={styles.permisosScroll}>
+                  {Object.entries(catalogo).map(([categoria, permisos]) => {
+                    // Filtrar permisos según búsqueda
+                    const permisosFiltrados = busquedaPermiso.trim()
+                      ? permisos.filter(p => 
+                          p.nombre.toLowerCase().includes(busquedaPermiso.toLowerCase()) ||
+                          p.descripcion?.toLowerCase().includes(busquedaPermiso.toLowerCase()) ||
+                          p.codigo.toLowerCase().includes(busquedaPermiso.toLowerCase())
+                        )
+                      : permisos;
+                    
+                    // Si no hay permisos que coincidan, no mostrar la categoría
+                    if (permisosFiltrados.length === 0) return null;
+                    
+                    const permisosActivos = permisosFiltrados.filter(p => permisosRol.includes(p.codigo)).length;
+                    const esSuperadmin = rolSeleccionado.codigo === 'SUPERADMIN';
+
+                    return (
+                      <div key={categoria} className={styles.categoria}>
+                        <div className={styles.categoriaHeader}>
+                          <h3 className={styles.categoriaTitulo}>
+                            {CATEGORIAS_NOMBRE[categoria] || categoria}
+                          </h3>
+                          <div className={styles.categoriaStats}>
+                            {permisosActivos} de {permisosFiltrados.length} activos
+                          </div>
+                        </div>
+
+                        <div className={styles.permisosList}>
+                          {permisosFiltrados.map(permiso => {
+                            const tienePermiso = permisosRol.includes(permiso.codigo);
+
+                            return (
+                              <div 
+                                key={permiso.codigo} 
+                                className={styles.permisoItem}
+                              >
+                                {/* Lado izquierdo: Info */}
+                                <div className={styles.permisoInfo}>
+                                  <div className={styles.permisoNombre}>
+                                    {permiso.nombre}
+                                    {permiso.es_critico && (
+                                      <span className={`${styles.badge} ${styles.badgeCritico}`}>
+                                        Crítico
+                                      </span>
+                                    )}
+                                  </div>
+                                  <code className={styles.permisoCodigo}>{permiso.codigo}</code>
+                                  {permiso.descripcion && (
+                                    <div className={styles.permisoDescripcion}>
+                                      {permiso.descripcion}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Lado derecho: Checkbox */}
+                                <div className={styles.permisoControls}>
+                                  <label style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 'var(--spacing-sm)',
+                                    cursor: esSuperadmin ? 'not-allowed' : 'pointer',
+                                    fontSize: 'var(--font-sm)',
+                                    color: 'var(--text-secondary)'
+                                  }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={tienePermiso}
+                                      onChange={() => togglePermisoRol(permiso.codigo)}
+                                      disabled={esSuperadmin}
+                                      style={{
+                                        width: '20px',
+                                        height: '20px',
+                                        cursor: esSuperadmin ? 'not-allowed' : 'pointer'
+                                      }}
+                                    />
+                                    {tienePermiso ? 'Activo' : 'Inactivo'}
+                                  </label>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </>
           ) : (

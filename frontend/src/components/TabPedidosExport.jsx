@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import styles from './TabPedidosExport.module.css';
 
-const API_URL = 'https://pricing.gaussonline.com.ar/api';
+const API_URL = import.meta.env.VITE_API_URL;
 
 export default function TabPedidosExport() {
   const [pedidos, setPedidos] = useState([]);
@@ -49,8 +49,9 @@ export default function TabPedidosExport() {
 
   const cargarEstadisticas = useCallback(async () => {
     try {
+      // Usar estadísticas del endpoint local con ssos_id=20 (En Preparación)
       const response = await axios.get(
-        `${API_URL}/pedidos-simple/estadisticas`,
+        `${API_URL}/pedidos-local/estadisticas?ssos_id=20`,
         { headers: { Authorization: `Bearer ${getToken()}` } }
       );
       setEstadisticas(response.data);
@@ -87,7 +88,10 @@ export default function TabPedidosExport() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      params.append('solo_activos', soloActivos);
+      // Usar ssos_id=20 (En Preparación) cuando solo_activos está activo
+      if (soloActivos) {
+        params.append('ssos_id', '20');
+      }
       if (soloTN) params.append('solo_tn', 'true');
       if (soloML) params.append('solo_ml', 'true');
       if (soloSinDireccion) params.append('solo_sin_direccion', 'true');
@@ -97,7 +101,7 @@ export default function TabPedidosExport() {
       params.append('limit', '500');
 
       const response = await axios.get(
-        `${API_URL}/pedidos-simple?${params.toString()}`,
+        `${API_URL}/pedidos-local?${params.toString()}`,
         { headers: { Authorization: `Bearer ${getToken()}` } }
       );
       
@@ -119,14 +123,14 @@ export default function TabPedidosExport() {
   }, [soloActivos, soloTN, soloML, soloOtros, soloSinDireccion, userIdFiltro, provinciaFiltro, search]);
 
   const sincronizarPedidos = async () => {
-    if (!confirm('¿Sincronizar pedidos desde el ERP? Puede tardar 1-2 minutos.')) {
+    if (!confirm('¿Sincronizar pedidos desde el ERP y limpiar archivados? Puede tardar 1-2 minutos.')) {
       return;
     }
 
     setSyncing(true);
     try {
       const response = await axios.post(
-        `${API_URL}/pedidos-simple/sincronizar`,
+        `${API_URL}/pedidos-local/sincronizar`,
         {},
         { 
           headers: { Authorization: `Bearer ${getToken()}` },
@@ -134,7 +138,10 @@ export default function TabPedidosExport() {
         }
       );
       
-      alert(`✅ Sincronización OK:\n- Registros obtenidos: ${response.data.registros_obtenidos || 0}`);
+      const headers = response.data.headers_archivados_limpiados || 0;
+      const details = response.data.details_archivados_limpiados || 0;
+      
+      alert(`✅ Sincronización OK:\n- Pedidos archivados limpiados: ${headers}\n- Detalles archivados limpiados: ${details}`);
       
       await cargarPedidos();
       await cargarEstadisticas();
@@ -955,7 +962,7 @@ export default function TabPedidosExport() {
                   </thead>
                   <tbody>
                     {pedidoSeleccionado.items && pedidoSeleccionado.items.map((item, idx) => (
-                      <tr key={idx}>
+                      <tr key={`${pedidoSeleccionado.soh_id}-${item.item_id}-${idx}`}>
                         <td>{item.item_id}</td>
                         <td>{item.item_code || '—'}</td>
                         <td>{item.item_desc || 'Sin descripción'}</td>

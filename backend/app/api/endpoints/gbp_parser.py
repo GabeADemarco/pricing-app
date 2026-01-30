@@ -42,9 +42,9 @@ SCRIPT_CONFIG = {
     "scriptItemCostListHistory": ["fromDate", "toDate", "iclhID"],
     "scriptItemCostList": ["fromDate", "toDate", "coslisID"],
     "scriptCurExchHistory": ["fromDate", "toDate","cehID"],
-    "scriptSaleOrderHeader": ["fromDate", "toDate", "sohID", "braID"],
-    "scriptSaleOrderDetail": ["fromDate", "toDate", "sohID", "sodID", "braID"],
-    "scriptSaleOrderHeaderHistory": ["fromDate", "toDate", "sohID", "sohhID", "braID"],
+    "scriptSaleOrderHeader": ["fromDate", "toDate", "sohID", "braID", "updateFromDate", "updateToDate"],
+    "scriptSaleOrderDetail": ["fromDate", "toDate", "sohID", "sohID2", "sodID", "braID", "updateFromDate", "updateToDate"],
+    "scriptSaleOrderHeaderHistory": ["fromDate", "toDate", "sohID", "sohhID", "braID", "updateFromDate", "updateToDate"],
     "scriptSaleOrderDetailHistory": ["fromDate", "toDate", "sohID", "sohhID", "sodID", "braID"],
     "scriptVentasFueraOM": ["fromDate", "toDate", "braID"],
     "scriptBrand": ["brandID"],
@@ -64,7 +64,8 @@ SCRIPT_CONFIG = {
     "scriptState": ["countryID", "stateID"],
     "scriptItemAssociation": ["itemAID", "itemAID4update", "itemID", "item1ID"],
     "scriptTiendaNubeOrders": ["fromDate", "toDate", "tnoID", "tnoIDfrom", "tnoIDto"],
-    "scriptEnvios": ["fromDate", "toDate"]
+    "scriptEnvios": ["fromDate", "toDate"],
+    "scriptSaleOrderTimes": ["fromDate", "toDate", "sohID", "braID", "sotID"]
 }
 
 # Configuración de operaciones

@@ -17,6 +17,34 @@ from app.api.deps import get_current_user
 router = APIRouter()
 
 
+def aplicar_filtro_tienda_oficial(query, tienda_oficial: Optional[str], db: Session):
+    """
+    Aplica filtro de tienda oficial por mlp_official_store_id.
+    
+    Tiendas disponibles:
+    - 57997: Gauss
+    - 2645: TP-Link
+    - 144: Forza/Verbatim
+    - 191942: Multi-marca (Epson, Logitech, MGN, Razer)
+    """
+    if tienda_oficial and tienda_oficial.isdigit():
+        from app.models.mercadolibre_item_publicado import MercadoLibreItemPublicado
+        from sqlalchemy import cast, String
+        
+        store_id = int(tienda_oficial)
+        
+        # Subquery para obtener mlp_ids de tienda oficial
+        # ml_ventas_metricas.mla_id contiene el mlp_id (numérico) como string
+        mlas_tienda_oficial = db.query(
+            cast(MercadoLibreItemPublicado.mlp_id, String)
+        ).filter(
+            MercadoLibreItemPublicado.mlp_official_store_id == store_id
+        ).distinct()
+        
+        query = query.filter(MLVentaMetrica.mla_id.in_(mlas_tienda_oficial))
+    return query
+
+
 class DesgloseMarca(BaseModel):
     """Desglose por marca dentro de una card"""
     marca: str
@@ -74,6 +102,7 @@ async def obtener_rentabilidad(
     categorias: Optional[str] = Query(None, description="Categorías separadas por coma"),
     subcategorias: Optional[str] = Query(None, description="Subcategorías separadas por coma"),
     productos: Optional[str] = Query(None, description="Item IDs separados por coma"),
+    tienda_oficial: Optional[str] = Query(None, description="ID de tienda oficial"),
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
@@ -128,6 +157,7 @@ async def obtener_rentabilidad(
             query = query.filter(MLVentaMetrica.categoria.in_(lista_categorias))
         if lista_subcategorias:
             query = query.filter(MLVentaMetrica.subcategoria.in_(lista_subcategorias))
+        query = aplicar_filtro_tienda_oficial(query, tienda_oficial, db)
         return query
 
     # Query según nivel de agrupación
@@ -242,9 +272,9 @@ async def obtener_rentabilidad(
     offsets_grupo_calculados = {}  # grupo_id -> {'offset_total': X, 'descripcion': Y, 'limite_aplicado': bool, 'limite_agotado': bool}
 
     # Función auxiliar para calcular consumo de un grupo en un rango de fechas DESDE LA TABLA DE CONSUMO
-    def calcular_consumo_grupo_desde_tabla(grupo_id, desde_dt, hasta_dt):
+    def calcular_consumo_grupo_desde_tabla(grupo_id, desde_dt, hasta_dt, tienda_oficial_filtro=None):
         """Calcula unidades y monto offset para un grupo en un rango de fechas desde la tabla de consumo"""
-        consumo = db.query(
+        query = db.query(
             func.sum(OffsetGrupoConsumo.cantidad).label('total_unidades'),
             func.sum(OffsetGrupoConsumo.monto_offset_aplicado).label('total_monto_ars'),
             func.sum(OffsetGrupoConsumo.monto_offset_usd).label('total_monto_usd')
@@ -252,7 +282,13 @@ async def obtener_rentabilidad(
             OffsetGrupoConsumo.grupo_id == grupo_id,
             OffsetGrupoConsumo.fecha_venta >= desde_dt,
             OffsetGrupoConsumo.fecha_venta < hasta_dt
-        ).first()
+        )
+        
+        # Filtrar por tienda oficial si aplica
+        if tienda_oficial_filtro and tienda_oficial_filtro.isdigit():
+            query = query.filter(OffsetGrupoConsumo.tienda_oficial == tienda_oficial_filtro)
+        
+        consumo = query.first()
 
         return (
             int(consumo.total_unidades or 0),
@@ -262,7 +298,7 @@ async def obtener_rentabilidad(
 
     # Función para calcular el offset de un grupo EN TIEMPO REAL desde las ventas
     # Se usa cuando el grupo tiene filtros pero no hay datos precalculados
-    def calcular_offset_grupo_en_tiempo_real(grupo_id, offset, desde_dt, hasta_dt, tc):
+    def calcular_offset_grupo_en_tiempo_real(grupo_id, offset, desde_dt, hasta_dt, tc, tienda_oficial_filtro=None):
         """
         Calcula el offset de un grupo sumando las ventas que matchean sus filtros.
         Retorna (total_unidades, total_offset_ars, total_offset_usd)
@@ -288,6 +324,13 @@ async def obtener_rentabilidad(
             return 0, 0.0, 0.0
 
         where_filtros = " OR ".join(condiciones_filtro)
+        
+        # Filtro de tienda oficial (usar parámetro preparado para evitar SQL injection)
+        filtro_tienda = ""
+        params_ml = {"desde": desde_dt, "hasta": hasta_dt}
+        if tienda_oficial_filtro and tienda_oficial_filtro.isdigit():
+            filtro_tienda = "AND mlp_official_store_id = :tienda_oficial"
+            params_ml["tienda_oficial"] = int(tienda_oficial_filtro)
 
         # Sumar ventas de ML
         query_ml = text(f"""
@@ -297,10 +340,11 @@ async def obtener_rentabilidad(
             FROM ml_ventas_metricas
             WHERE ({where_filtros})
             AND fecha_venta >= :desde AND fecha_venta < :hasta
+            {filtro_tienda}
         """)
-        result_ml = db.execute(query_ml, {"desde": desde_dt, "hasta": hasta_dt}).first()
+        result_ml = db.execute(query_ml, params_ml).first()
 
-        # Sumar ventas fuera de ML
+        # Sumar ventas fuera de ML (estas no tienen tienda oficial, se incluyen siempre)
         query_fuera = text(f"""
             SELECT
                 COALESCE(SUM(cantidad), 0) as total_unidades,
@@ -358,19 +402,21 @@ async def obtener_rentabilidad(
                 acum_offset_ars = float(resumen.total_monto_ars or 0)
 
                 # Calcular consumo ANTES del período filtrado (lo que ya se consumió)
+                # IMPORTANTE: Este consumo previo es GLOBAL (sin filtro de tienda) para calcular límites correctamente
                 consumo_previo_unidades = 0
                 consumo_previo_offset = 0.0
                 if offset_inicio_dt < fecha_desde_dt:
                     consumo_previo_unidades, consumo_previo_offset, _ = calcular_consumo_grupo_desde_tabla(
-                        offset.grupo_id, offset_inicio_dt, fecha_desde_dt
+                        offset.grupo_id, offset_inicio_dt, fecha_desde_dt, tienda_oficial_filtro=None
                     )
 
                 # Calcular consumo del período filtrado
                 # IMPORTANTE: Solo contar ventas desde que el offset empezó a aplicar
                 # Si el offset empieza después del inicio del filtro, usar la fecha del offset
+                # Aquí SÍ aplicamos el filtro de tienda oficial para mostrar solo esa tienda
                 periodo_inicio_dt = max(fecha_desde_dt, offset_inicio_dt)
                 periodo_unidades, periodo_offset, _ = calcular_consumo_grupo_desde_tabla(
-                    offset.grupo_id, periodo_inicio_dt, fecha_hasta_dt
+                    offset.grupo_id, periodo_inicio_dt, fecha_hasta_dt, tienda_oficial_filtro=tienda_oficial
                 )
 
                 # Verificar si el límite ya se agotó
@@ -428,8 +474,9 @@ async def obtener_rentabilidad(
                 periodo_inicio_dt = max(fecha_desde_dt, offset_inicio_dt)
 
                 # Calcular el offset sumando ventas que matchean los filtros
+                # Aplicar filtro de tienda oficial para mostrar solo esa tienda
                 total_unidades, total_offset_ars, total_offset_usd = calcular_offset_grupo_en_tiempo_real(
-                    offset.grupo_id, offset, periodo_inicio_dt, fecha_hasta_dt, tc
+                    offset.grupo_id, offset, periodo_inicio_dt, fecha_hasta_dt, tc, tienda_oficial_filtro=tienda_oficial
                 )
 
                 offsets_grupo_calculados[offset.grupo_id] = {
@@ -448,9 +495,9 @@ async def obtener_rentabilidad(
     # Pre-calcular offsets INDIVIDUALES (sin grupo) con límites
     offsets_individuales_calculados = {}  # offset_id -> {'offset_total': X, 'limite_aplicado': bool, etc}
 
-    def calcular_consumo_individual_desde_tabla(offset_id, desde_dt, hasta_dt):
+    def calcular_consumo_individual_desde_tabla(offset_id, desde_dt, hasta_dt, tienda_oficial_filtro=None):
         """Calcula unidades y monto para un offset individual en un rango de fechas"""
-        consumo = db.query(
+        query = db.query(
             func.sum(OffsetIndividualConsumo.cantidad).label('total_unidades'),
             func.sum(OffsetIndividualConsumo.monto_offset_aplicado).label('total_monto_ars'),
             func.sum(OffsetIndividualConsumo.monto_offset_usd).label('total_monto_usd')
@@ -458,7 +505,13 @@ async def obtener_rentabilidad(
             OffsetIndividualConsumo.offset_id == offset_id,
             OffsetIndividualConsumo.fecha_venta >= desde_dt,
             OffsetIndividualConsumo.fecha_venta < hasta_dt
-        ).first()
+        )
+        
+        # Filtrar por tienda oficial si aplica
+        if tienda_oficial_filtro and tienda_oficial_filtro.isdigit():
+            query = query.filter(OffsetIndividualConsumo.tienda_oficial == tienda_oficial_filtro)
+        
+        consumo = query.first()
 
         return (
             int(consumo.total_unidades or 0),
@@ -487,19 +540,21 @@ async def obtener_rentabilidad(
             acum_offset_ars = float(resumen.total_monto_ars or 0)
 
             # Consumo previo al período filtrado
+            # IMPORTANTE: Este consumo previo es GLOBAL (sin filtro de tienda) para calcular límites correctamente
             consumo_previo_unidades = 0
             consumo_previo_offset = 0.0
             if offset_inicio_dt < fecha_desde_dt:
                 consumo_previo_unidades, consumo_previo_offset, _ = calcular_consumo_individual_desde_tabla(
-                    offset.id, offset_inicio_dt, fecha_desde_dt
+                    offset.id, offset_inicio_dt, fecha_desde_dt, tienda_oficial_filtro=None
                 )
 
             # Consumo del período filtrado
             # IMPORTANTE: Solo contar ventas desde que el offset empezó a aplicar
             # Si el offset empieza después del inicio del filtro, usar la fecha del offset
+            # Aquí SÍ aplicamos el filtro de tienda oficial para mostrar solo esa tienda
             periodo_inicio_dt = max(fecha_desde_dt, offset_inicio_dt)
             periodo_unidades, periodo_offset, _ = calcular_consumo_individual_desde_tabla(
-                offset.id, periodo_inicio_dt, fecha_hasta_dt
+                offset.id, periodo_inicio_dt, fecha_hasta_dt, tienda_oficial_filtro=tienda_oficial
             )
 
             limite_agotado_previo = False
@@ -685,6 +740,9 @@ async def obtener_rentabilidad(
             query = query.filter(MLVentaMetrica.categoria.in_(lista_categorias))
         if lista_subcategorias:
             query = query.filter(MLVentaMetrica.subcategoria.in_(lista_subcategorias))
+        
+        # Aplicar filtro de tienda oficial
+        query = aplicar_filtro_tienda_oficial(query, tienda_oficial, db)
 
         # Aplicar filtro específico del offset (marca, categoría, item, etc.)
         if filtro_valor is True:
@@ -1326,6 +1384,7 @@ async def obtener_rentabilidad(
             "categorias": lista_categorias,
             "subcategorias": lista_subcategorias,
             "productos": lista_productos,
+            "tienda_oficial": tienda_oficial,
             "nivel_agrupacion": nivel
         }
     )
@@ -1345,6 +1404,7 @@ async def buscar_productos(
     q: str = Query(..., min_length=2, description="Término de búsqueda"),
     fecha_desde: date = Query(...),
     fecha_hasta: date = Query(...),
+    tienda_oficial: Optional[str] = Query(None, description="ID de tienda oficial"),
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
@@ -1369,7 +1429,10 @@ async def buscar_productos(
             MLVentaMetrica.codigo.ilike(f"%{q}%"),
             MLVentaMetrica.descripcion.ilike(f"%{q}%")
         )
-    ).distinct().limit(50)
+    )
+    
+    query = aplicar_filtro_tienda_oficial(query, tienda_oficial, db)
+    query = query.distinct().limit(50)
 
     resultados = query.all()
 
@@ -1392,6 +1455,7 @@ async def obtener_filtros_disponibles(
     marcas: Optional[str] = Query(None),
     categorias: Optional[str] = Query(None),
     subcategorias: Optional[str] = Query(None),
+    tienda_oficial: Optional[str] = Query(None, description="ID de tienda oficial"),
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
@@ -1418,6 +1482,7 @@ async def obtener_filtros_disponibles(
         marcas_query = marcas_query.filter(MLVentaMetrica.categoria.in_(lista_categorias))
     if lista_subcategorias:
         marcas_query = marcas_query.filter(MLVentaMetrica.subcategoria.in_(lista_subcategorias))
+    marcas_query = aplicar_filtro_tienda_oficial(marcas_query, tienda_oficial, db)
     marcas_disponibles = marcas_query.distinct().order_by(MLVentaMetrica.marca).all()
 
     # Categorías disponibles (filtradas por marcas y subcategorías seleccionadas)
@@ -1430,6 +1495,7 @@ async def obtener_filtros_disponibles(
         cat_query = cat_query.filter(MLVentaMetrica.marca.in_(lista_marcas))
     if lista_subcategorias:
         cat_query = cat_query.filter(MLVentaMetrica.subcategoria.in_(lista_subcategorias))
+    cat_query = aplicar_filtro_tienda_oficial(cat_query, tienda_oficial, db)
     categorias_disponibles = cat_query.distinct().order_by(MLVentaMetrica.categoria).all()
 
     # Subcategorías disponibles (filtradas por marcas y categorías seleccionadas)
@@ -1442,6 +1508,7 @@ async def obtener_filtros_disponibles(
         subcat_query = subcat_query.filter(MLVentaMetrica.marca.in_(lista_marcas))
     if lista_categorias:
         subcat_query = subcat_query.filter(MLVentaMetrica.categoria.in_(lista_categorias))
+    subcat_query = aplicar_filtro_tienda_oficial(subcat_query, tienda_oficial, db)
     subcategorias_disponibles = subcat_query.distinct().order_by(MLVentaMetrica.subcategoria).all()
 
     return {

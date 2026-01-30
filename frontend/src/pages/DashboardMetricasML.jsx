@@ -7,7 +7,7 @@ import { useQueryFilters } from '../hooks/useQueryFilters';
 import { useServerPagination } from '../hooks/useServerPagination';
 
 // API base URL
-const API_URL = 'https://pricing.gaussonline.com.ar/api';
+const API_URL = import.meta.env.VITE_API_URL;
 
 // Helper para obtener fechas por defecto
 const getDefaultFechaDesde = () => {
@@ -334,21 +334,6 @@ export default function DashboardMetricasML() {
                 </select>
               </div>
 
-              <div className={styles.filtroSelect}>
-                <label>🏪 Tienda Oficial:</label>
-                <select
-                  value={tiendaOficialSeleccionada}
-                  onChange={(e) => updateFilters({ tienda_oficial: e.target.value })}
-                  className={styles.select}
-                >
-                  <option value="">Todas</option>
-                  <option value="57997">🏢 Gauss</option>
-                  <option value="2645">📡 TP-Link</option>
-                  <option value="144" title="Forza, Verbatim">⚡ Forza/Verbatim</option>
-                  <option value="191942" title="Epson, Forza, Logitech, MGN, Razer">🎯 Multi-marca</option>
-                </select>
-              </div>
-
               <button 
                 onClick={tabActivo === 'resumen' ? cargarDashboard : pagination.reset} 
                 className={styles.btnRecargar}
@@ -358,6 +343,22 @@ export default function DashboardMetricasML() {
               </button>
             </>
           )}
+
+          {/* Filtro de Tienda Oficial: visible en todas las tabs */}
+          <div className={styles.filtroSelect}>
+            <label>🏪 Tienda Oficial:</label>
+            <select
+              value={tiendaOficialSeleccionada}
+              onChange={(e) => updateFilters({ tienda_oficial: e.target.value })}
+              className={styles.select}
+            >
+              <option value="">Todas</option>
+              <option value="57997">🏢 Gauss</option>
+              <option value="2645">📡 TP-Link</option>
+              <option value="144" title="Forza, Verbatim">⚡ Forza/Verbatim</option>
+              <option value="191942" title="Epson, Forza, Logitech, MGN, Razer">🎯 Multi-marca</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -463,7 +464,11 @@ export default function DashboardMetricasML() {
         </div>
       ) : tabActivo === 'rentabilidad' ? (
         /* Tab de Rentabilidad */
-        <TabRentabilidad fechaDesde={fechaDesde} fechaHasta={fechaHasta} />
+        <TabRentabilidad 
+          fechaDesde={fechaDesde} 
+          fechaHasta={fechaHasta}
+          tiendaOficial={tiendaOficialSeleccionada}
+        />
       ) : metricasGenerales ? (
         /* Tab de Resumen (incluye tienda-oficial con filtro) */
         <>

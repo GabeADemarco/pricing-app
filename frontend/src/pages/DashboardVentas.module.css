@@ -51,6 +51,7 @@
   font-size: 14px;
   cursor: pointer;
   transition: border-color 0.2s;
+  position: relative;
 }
 
 .dateInput:hover {
@@ -61,6 +62,17 @@
   outline: none;
   border-color: var(--brand-primary);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Hacer que el ícono del calendario sea visible */
+.dateInput::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 1;
+  transition: opacity 0.2s, filter 0.2s;
+}
+
+.dateInput:hover::-webkit-calendar-picker-indicator {
+  opacity: 0.7;
 }
 
 .btnRecargar {
@@ -253,4 +265,20 @@
   .descripcion {
     max-width: 200px;
   }
+}
+
+/* ===== DARK MODE - Date Input ===== */
+:global([data-theme="dark"]) .dateInput {
+  color-scheme: dark !important;
+}
+
+:global([data-theme="dark"]) .dateInput::-webkit-calendar-picker-indicator {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  border-radius: 4px !important;
+  padding: 4px !important;
+  opacity: 1 !important;
+}
+
+:global([data-theme="dark"]) .dateInput:hover::-webkit-calendar-picker-indicator {
+  background-color: rgba(255, 255, 255, 0.3) !important;
 }

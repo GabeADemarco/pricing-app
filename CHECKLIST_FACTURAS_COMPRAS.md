@@ -36,6 +36,11 @@ Crear usuarios de prueba para cada rol:
   - Password: `tesoreria123`
   - Rol: `TESORERIA`
 
+### Paso 1.5: Ajustes del Formulario de Creación
+
+- [ ] Modificar la obligatoriedad del iniciar proceso del formulario inicial
+- [ ] Cambiar a guardado de archivos locales (en el servidor)
+
 ### Paso 2: Probar Acceso y Vista de Cada Rol
 
 Para cada usuario creado:

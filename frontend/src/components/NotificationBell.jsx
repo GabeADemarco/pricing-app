@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import styles from './NotificationBell.module.css';
 import axios from 'axios';
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const api = axios.create({
-  baseURL: 'https://pricing.gaussonline.com.ar',
+  baseURL: `${API_URL}`,
 });
 
 api.interceptors.request.use((config) => {
@@ -26,8 +28,8 @@ export default function NotificationBell() {
     try {
       setLoading(true);
       const [notifResponse, statsResponse] = await Promise.all([
-        api.get('/api/notificaciones/agrupadas?solo_no_leidas=false'),
-        api.get('/api/notificaciones/stats')
+        api.get('/notificaciones/agrupadas?solo_no_leidas=false'),
+        api.get('/notificaciones/stats')
       ]);
 
       setNotificaciones(notifResponse.data);
@@ -51,7 +53,7 @@ export default function NotificationBell() {
     try {
       // Marcar todas las notificaciones del grupo
       await Promise.all(
-        notificacionesIds.map(id => api.patch(`/api/notificaciones/${id}/marcar-leida`))
+        notificacionesIds.map(id => api.patch(`/notificaciones/${id}/marcar-leida`))
       );
       await fetchNotificaciones();
     } catch (error) {
@@ -61,7 +63,7 @@ export default function NotificationBell() {
 
   const marcarTodasLeidas = async () => {
     try {
-      await api.post('/api/notificaciones/marcar-todas-leidas');
+      await api.post('/notificaciones/marcar-todas-leidas');
       await fetchNotificaciones();
     } catch (error) {
       console.error('Error al marcar todas:', error);
@@ -72,7 +74,7 @@ export default function NotificationBell() {
     try {
       // Eliminar todas las notificaciones del grupo
       await Promise.all(
-        notificacionesIds.map(id => api.delete(`/api/notificaciones/${id}`))
+        notificacionesIds.map(id => api.delete(`/notificaciones/${id}`))
       );
       await fetchNotificaciones();
     } catch (error) {

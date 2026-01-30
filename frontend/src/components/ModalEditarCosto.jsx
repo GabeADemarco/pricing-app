@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import styles from './TabRentabilidad.module.css';
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const api = axios.create({
-  baseURL: 'https://pricing.gaussonline.com.ar',
+  baseURL: `${API_URL}`,
 });
 
 api.interceptors.request.use((config) => {
@@ -69,7 +71,7 @@ export default function ModalEditarCosto({
 
   const cargarMarkupCosto = async () => {
     try {
-      const response = await api.get('/api/configuracion/pricing-constants/actual');
+      const response = await api.get('/configuracion/pricing-constants/actual');
       if (response.data.varios_porcentaje !== undefined) {
         setMarkupCosto(response.data.varios_porcentaje.toString());
         setMarkupCostoOriginal(response.data.varios_porcentaje);
@@ -86,7 +88,7 @@ export default function ModalEditarCosto({
     try {
       // Extraer solo la fecha (YYYY-MM-DD)
       const fechaStr = fecha.split('T')[0];
-      const response = await api.get(`/api/tipo-cambio/fecha/${fechaStr}`);
+      const response = await api.get(`/tipo-cambio/fecha/${fechaStr}`);
       if (response.data.venta) {
         setTipoCambio(response.data.venta.toString());
         setTipoCambioOriginal(response.data.venta);
@@ -96,7 +98,7 @@ export default function ModalEditarCosto({
       console.error('Error cargando tipo de cambio:', error);
       // Fallback: cargar TC actual
       try {
-        const response = await api.get('/api/tipo-cambio/actual');
+        const response = await api.get('/tipo-cambio/actual');
         if (response.data.venta) {
           setTipoCambio(response.data.venta.toString());
           setTipoCambioOriginal(response.data.venta);
@@ -112,7 +114,7 @@ export default function ModalEditarCosto({
     if (busquedaProducto.length < 2) return;
     setBuscandoProductos(true);
     try {
-      const response = await api.get('/api/buscar-productos-erp', {
+      const response = await api.get('/buscar-productos-erp', {
         params: { q: busquedaProducto }
       });
       setProductosEncontrados(response.data);
@@ -223,7 +225,7 @@ export default function ModalEditarCosto({
 
     setGuardando(true);
     try {
-      await api.put(`/api/ventas-fuera-ml/metricas/${operacion.metrica_id}/costo`, {
+      await api.put(`/ventas-fuera-ml/metricas/${operacion.metrica_id}/costo`, {
         costo_unitario: costoConMarkup
       });
 

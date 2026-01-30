@@ -5,8 +5,10 @@ import styles from './TabRentabilidad.module.css';
 import ModalOffset from './ModalOffset';
 import { useQueryFilters } from '../hooks/useQueryFilters';
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const api = axios.create({
-  baseURL: 'https://pricing.gaussonline.com.ar',
+  baseURL: `${API_URL}`,
 });
 
 api.interceptors.request.use((config) => {
@@ -98,7 +100,7 @@ export default function TabRentabilidadFuera({ fechaDesde, fechaHasta }) {
         params.subcategorias = subcategoriasSeleccionadas.join('|');
       }
 
-      const response = await api.get('/api/rentabilidad-fuera/filtros', { params });
+      const response = await api.get('/rentabilidad-fuera/filtros', { params });
       setFiltrosDisponibles(response.data);
     } catch (error) {
       console.error('Error cargando filtros:', error);
@@ -125,7 +127,7 @@ export default function TabRentabilidadFuera({ fechaDesde, fechaHasta }) {
         params.productos = productosSeleccionados.join('|');
       }
 
-      const response = await api.get('/api/rentabilidad-fuera', { params });
+      const response = await api.get('/rentabilidad-fuera', { params });
       setRentabilidad(response.data);
     } catch (error) {
       console.error('Error cargando rentabilidad:', error);
@@ -138,7 +140,7 @@ export default function TabRentabilidadFuera({ fechaDesde, fechaHasta }) {
     if (busquedaProducto.length < 2) return;
     setBuscandoProductos(true);
     try {
-      const response = await api.get('/api/rentabilidad-fuera/buscar-productos', {
+      const response = await api.get('/rentabilidad-fuera/buscar-productos', {
         params: {
           q: busquedaProducto,
           fecha_desde: fechaDesde,
@@ -704,7 +706,7 @@ export default function TabRentabilidadFuera({ fechaDesde, fechaHasta }) {
         filtrosDisponibles={filtrosDisponibles}
         fechaDesde={fechaDesde}
         fechaHasta={fechaHasta}
-        apiBasePath="/api/rentabilidad-fuera"
+        apiBasePath="/rentabilidad-fuera"
       />
     </div>
   );

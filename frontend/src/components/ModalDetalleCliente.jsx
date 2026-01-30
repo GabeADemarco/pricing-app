@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import styles from './ModalDetalleCliente.module.css';
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://pricing.gaussonline.com.ar';
+const API_URL = import.meta.env.VITE_API_URL;
 
 export default function ModalDetalleCliente({ cliente, onClose, onActualizar }) {
   const [editando, setEditando] = useState(false);
@@ -35,7 +35,7 @@ export default function ModalDetalleCliente({ cliente, onClose, onActualizar }) 
     setGuardando(true);
     try {
       const response = await axios.patch(
-        `${API_URL}/api/clientes/${cliente.cust_id}?comp_id=${cliente.comp_id}`,
+        `${API_URL}/clientes/${cliente.cust_id}?comp_id=${cliente.comp_id}`,
         datosEdit
       );
       

@@ -399,6 +399,7 @@ PERMISOS_SISTEMA = [
         "categoria": CategoriaPermiso.ADMINISTRACION,
         "orden": 56
     },
+<<<<<<< HEAD
     {
         "codigo": "admin.gestionar_mla_banlist",
         "nombre": "Gestionar MLA banlist",
@@ -560,6 +561,107 @@ PERMISOS_SISTEMA = [
         "categoria": CategoriaPermiso.FACTURAS_COMPRAS,
         "orden": 90
     },
+    {
+        "codigo": "admin.gestionar_mla_banlist",
+        "nombre": "Gestionar MLA banlist",
+        "descripcion": "Agregar y quitar MLAs de la banlist",
+        "categoria": CategoriaPermiso.ADMINISTRACION,
+        "orden": 57
+    },
+    {
+        "codigo": "admin.gestionar_produccion_banlist",
+        "nombre": "Gestionar banlist de producción",
+        "descripcion": "Agregar y quitar items del banlist de Producción - Preparación",
+        "categoria": CategoriaPermiso.ADMINISTRACION,
+        "orden": 58
+    },
+    {
+        "codigo": "admin.ver_items_sin_mla",
+        "nombre": "Ver items sin MLA",
+        "descripcion": "Ver listado de items que no tienen MLA asociado",
+        "categoria": CategoriaPermiso.ADMINISTRACION,
+        "orden": 59
+    },
+    {
+        "codigo": "admin.gestionar_items_sin_mla_banlist",
+        "nombre": "Gestionar banlist de items sin MLA",
+        "descripcion": "Agregar y quitar items de la banlist de items sin MLA",
+        "categoria": CategoriaPermiso.ADMINISTRACION,
+        "orden": 60
+    },
+    {
+        "codigo": "admin.ver_comparacion_listas_ml",
+        "nombre": "Ver comparación listas vs ML",
+        "descripcion": "Ver comparación entre listas de precios y publicaciones ML",
+        "categoria": CategoriaPermiso.ADMINISTRACION,
+        "orden": 61
+    },
+    {
+        "codigo": "produccion.marcar_prearmado",
+        "nombre": "Marcar productos pre-armados",
+        "descripcion": "Marcar/desmarcar productos que están siendo pre-armados en producción",
+        "categoria": CategoriaPermiso.PRODUCTOS,
+        "orden": 62
+    },
+
+    # =========================================================================
+    # CONFIGURACIÓN
+    # =========================================================================
+    {
+        "codigo": "config.ver_comisiones",
+        "nombre": "Ver comisiones",
+        "descripcion": "Ver configuración de comisiones ML",
+        "categoria": CategoriaPermiso.CONFIGURACION,
+        "orden": 70
+    },
+    {
+        "codigo": "config.editar_comisiones",
+        "nombre": "Editar comisiones",
+        "descripcion": "Crear nuevas versiones de comisiones",
+        "categoria": CategoriaPermiso.CONFIGURACION,
+        "orden": 71,
+        "es_critico": True
+    },
+    {
+        "codigo": "config.ver_constantes",
+        "nombre": "Ver constantes de pricing",
+        "descripcion": "Ver configuración de constantes (tiers, varios, etc.)",
+        "categoria": CategoriaPermiso.CONFIGURACION,
+        "orden": 72
+    },
+    {
+        "codigo": "config.editar_constantes",
+        "nombre": "Editar constantes de pricing",
+        "descripcion": "Crear nuevas versiones de constantes",
+        "categoria": CategoriaPermiso.CONFIGURACION,
+        "orden": 73,
+        "es_critico": True
+    },
+    {
+        "codigo": "config.ver_tipo_cambio",
+        "nombre": "Ver tipo de cambio",
+        "descripcion": "Ver cotización actual del dólar",
+        "categoria": CategoriaPermiso.CONFIGURACION,
+        "orden": 74
+    },
+
+    # =========================================================================
+    # CLIENTES
+    # =========================================================================
+    {
+        "codigo": "clientes.ver",
+        "nombre": "Ver clientes",
+        "descripcion": "Acceso a la lista de clientes y sus detalles",
+        "categoria": CategoriaPermiso.CLIENTES,
+        "orden": 80
+    },
+    {
+        "codigo": "clientes.exportar",
+        "nombre": "Exportar clientes",
+        "descripcion": "Exportar datos de clientes a CSV",
+        "categoria": CategoriaPermiso.CLIENTES,
+        "orden": 81
+    },
 ]
 
 
@@ -590,6 +692,9 @@ PERMISOS_POR_ROL = {
         "admin.gestionar_banlist",
         "admin.gestionar_mla_banlist",
         "admin.gestionar_produccion_banlist",
+        "admin.ver_items_sin_mla",
+        "admin.gestionar_items_sin_mla_banlist",
+        "admin.ver_comparacion_listas_ml",
         "produccion.marcar_prearmado",
         "config.*",
     ],
@@ -614,6 +719,8 @@ PERMISOS_POR_ROL = {
         "reportes.ver_notificaciones",
         "reportes.ver_calculadora",
         "reportes.exportar",
+        "admin.ver_items_sin_mla",
+        "admin.ver_comparacion_listas_ml",
         "config.ver_comisiones",
         "config.ver_constantes",
         "config.ver_tipo_cambio",

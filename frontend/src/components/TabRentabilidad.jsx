@@ -5,8 +5,10 @@ import styles from './TabRentabilidad.module.css';
 import ModalOffset from './ModalOffset';
 import { useQueryFilters } from '../hooks/useQueryFilters';
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const api = axios.create({
-  baseURL: 'https://pricing.gaussonline.com.ar',
+  baseURL: `${API_URL}`,
 });
 
 api.interceptors.request.use((config) => {
@@ -17,7 +19,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-export default function TabRentabilidad({ fechaDesde, fechaHasta }) {
+export default function TabRentabilidad({ fechaDesde, fechaHasta, tiendaOficial }) {
   const [loading, setLoading] = useState(false);
   const [rentabilidad, setRentabilidad] = useState(null);
   const [filtrosDisponibles, setFiltrosDisponibles] = useState({
@@ -74,7 +76,7 @@ export default function TabRentabilidad({ fechaDesde, fechaHasta }) {
       cargarFiltros();
       cargarRentabilidad();
     }
-  }, [fechaDesde, fechaHasta]);
+  }, [fechaDesde, fechaHasta, tiendaOficial]);
 
   useEffect(() => {
     if (fechaDesde && fechaHasta) {
@@ -99,8 +101,11 @@ export default function TabRentabilidad({ fechaDesde, fechaHasta }) {
       if (subcategoriasSeleccionadas.length > 0) {
         params.subcategorias = subcategoriasSeleccionadas.join('|');
       }
+      if (tiendaOficial) {
+        params.tienda_oficial = tiendaOficial;
+      }
 
-      const response = await api.get('/api/rentabilidad/filtros', { params });
+      const response = await api.get('/rentabilidad/filtros', { params });
       setFiltrosDisponibles(response.data);
     } catch (error) {
       console.error('Error cargando filtros:', error);
@@ -127,8 +132,11 @@ export default function TabRentabilidad({ fechaDesde, fechaHasta }) {
       if (productosSeleccionados.length > 0) {
         params.productos = productosSeleccionados.join('|');
       }
+      if (tiendaOficial) {
+        params.tienda_oficial = tiendaOficial;
+      }
 
-      const response = await api.get('/api/rentabilidad', { params });
+      const response = await api.get('/rentabilidad', { params });
       setRentabilidad(response.data);
     } catch (error) {
       console.error('Error cargando rentabilidad:', error);
@@ -141,13 +149,16 @@ export default function TabRentabilidad({ fechaDesde, fechaHasta }) {
     if (busquedaProducto.length < 2) return;
     setBuscandoProductos(true);
     try {
-      const response = await api.get('/api/rentabilidad/buscar-productos', {
-        params: {
-          q: busquedaProducto,
-          fecha_desde: fechaDesde,
-          fecha_hasta: fechaHasta
-        }
-      });
+      const params = {
+        q: busquedaProducto,
+        fecha_desde: fechaDesde,
+        fecha_hasta: fechaHasta
+      };
+      if (tiendaOficial) {
+        params.tienda_oficial = tiendaOficial;
+      }
+      
+      const response = await api.get('/rentabilidad/buscar-productos', { params });
       setProductosEncontrados(response.data);
     } catch (error) {
       console.error('Error buscando productos:', error);
@@ -763,7 +774,7 @@ export default function TabRentabilidad({ fechaDesde, fechaHasta }) {
         filtrosDisponibles={filtrosDisponibles}
         fechaDesde={fechaDesde}
         fechaHasta={fechaHasta}
-        apiBasePath="/api/rentabilidad"
+        apiBasePath="/rentabilidad"
       />
     </div>
   );

@@ -198,7 +198,6 @@ option {
 
 input[type="text"],
 input[type="number"],
-input[type="date"],
 input[type="email"],
 input[type="password"],
 input[type="url"],
@@ -211,14 +210,29 @@ textarea {
   font-size: 14px;
 }
 
+/* Date inputs - Sin !important para permitir que el navegador controle los íconos nativos */
+input[type="date"] {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 4px;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
 input[type="text"]:focus,
 input[type="number"]:focus,
-input[type="date"]:focus,
 input[type="email"]:focus,
 input[type="password"]:focus,
 input[type="url"]:focus,
 textarea:focus {
   border-color: var(--brand-primary) !important;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(92, 140, 255, 0.1);
+}
+
+input[type="date"]:focus {
+  border-color: var(--brand-primary);
   outline: none;
   box-shadow: 0 0 0 3px rgba(92, 140, 255, 0.1);
 }
@@ -256,4 +270,38 @@ button:active {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-tertiary);
+}
+
+/* ===== DATE INPUT - CALENDARIO ===== */
+/* El color-scheme permite que el navegador ajuste automáticamente los controles nativos */
+
+input[type="date"] {
+  cursor: pointer;
+  color-scheme: light;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 1;
+  transition: opacity 0.2s;
+}
+
+input[type="date"]:hover::-webkit-calendar-picker-indicator {
+  opacity: 0.7;
+}
+
+/* Dark mode - Fondo claro en el ícono para que se vea sobre fondo oscuro */
+[data-theme="dark"] input[type="date"] {
+  color-scheme: dark;
+}
+
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 4px;
+  opacity: 1;
+}
+
+[data-theme="dark"] input[type="date"]:hover::-webkit-calendar-picker-indicator {
+  background-color: rgba(255, 255, 255, 0.3);
 }

@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { useQueryFilters } from '../hooks/useQueryFilters';
+import { usePermisos } from '../hooks/usePermisos';
 import './ItemsSinMLA.css';
 
 const ItemsSinMLA = () => {
+  const { tienePermiso } = usePermisos();
+  
   // Usar query params para tab activo
   const { getFilter, updateFilters } = useQueryFilters({
     tab: 'sin-mla'
@@ -62,7 +65,7 @@ const ItemsSinMLA = () => {
   const [busquedaComparacion, setBusquedaComparacion] = useState('');
   const [marcaComparacion, setMarcaComparacion] = useState('');
 
-  const API_URL = 'https://pricing.gaussonline.com.ar/api';
+  const API_URL = import.meta.env.VITE_API_URL;
   const token = localStorage.getItem('token');
 
   useEffect(() => {
@@ -529,28 +532,34 @@ const ItemsSinMLA = () => {
 
       {/* Tabs */}
       <div className="tabs-container">
-        <button
-          className={`tab-button ${activeTab === 'sin-mla' ? 'active' : ''}`}
-          onClick={() => setActiveTab('sin-mla')}
-        >
-          🔍 Sin MLA ({itemsSinMLA.length})
-        </button>
-        <button
-          className={`tab-button ${activeTab === 'banlist' ? 'active' : ''}`}
-          onClick={() => setActiveTab('banlist')}
-        >
-          🚫 Banlist ({itemsBaneados.length})
-        </button>
-        <button
-          className={`tab-button ${activeTab === 'comparacion' ? 'active' : ''}`}
-          onClick={() => setActiveTab('comparacion')}
-        >
-          📊 Comparación Listas ({itemsComparacion.length})
-        </button>
+        {tienePermiso('admin.ver_items_sin_mla') && (
+          <button
+            className={`tab-button ${activeTab === 'sin-mla' ? 'active' : ''}`}
+            onClick={() => setActiveTab('sin-mla')}
+          >
+            🔍 Sin MLA ({itemsSinMLA.length})
+          </button>
+        )}
+        {tienePermiso('admin.gestionar_items_sin_mla_banlist') && (
+          <button
+            className={`tab-button ${activeTab === 'banlist' ? 'active' : ''}`}
+            onClick={() => setActiveTab('banlist')}
+          >
+            🚫 Banlist ({itemsBaneados.length})
+          </button>
+        )}
+        {tienePermiso('admin.ver_comparacion_listas_ml') && (
+          <button
+            className={`tab-button ${activeTab === 'comparacion' ? 'active' : ''}`}
+            onClick={() => setActiveTab('comparacion')}
+          >
+            📊 Comparación Listas ({itemsComparacion.length})
+          </button>
+        )}
       </div>
 
       {/* Contenido del Tab 1: Items sin MLA */}
-      {activeTab === 'sin-mla' && (
+      {activeTab === 'sin-mla' && tienePermiso('admin.ver_items_sin_mla') && (
         <div className="tab-content">
           {/* Filtros */}
           <div className="filters-section">
@@ -791,7 +800,7 @@ const ItemsSinMLA = () => {
       )}
 
       {/* Contenido del Tab 2: Banlist */}
-      {activeTab === 'banlist' && (
+      {activeTab === 'banlist' && tienePermiso('admin.gestionar_items_sin_mla_banlist') && (
         <div className="tab-content">
           <p className="tab-description">
             Items que no deben aparecer en el reporte de sin MLA
@@ -985,7 +994,7 @@ const ItemsSinMLA = () => {
       )}
 
       {/* Contenido del Tab 3: Comparación de Listas */}
-      {activeTab === 'comparacion' && (
+      {activeTab === 'comparacion' && tienePermiso('admin.ver_comparacion_listas_ml') && (
         <div className="tab-content">
           {/* Tabla de comparación */}
           {loadingComparacion ? (

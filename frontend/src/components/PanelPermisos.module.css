@@ -1,0 +1,321 @@
+/* ============================================
+   PANEL PERMISOS - Estilo WordPress
+   Todo visible, sin colapsos, scroll fluido
+   ============================================ */
+
+/* Contenedor principal */
+.permisosWrapper {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 250px);
+  min-height: 500px;
+}
+
+/* Header con controles */
+.permisosHeader {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-primary);
+  flex-shrink: 0;
+}
+
+.headerRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+}
+
+.searchBox {
+  flex: 1;
+  max-width: 400px;
+}
+
+.searchInput {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px rgba(92, 140, 255, 0.1);
+}
+
+.legend {
+  display: flex;
+  gap: var(--spacing-md);
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.legendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+}
+
+/* Contenedor scrollable de permisos */
+.permisosScroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-md);
+}
+
+/* Categoría */
+.categoria {
+  margin-bottom: var(--spacing-lg);
+}
+
+.categoriaHeader {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-secondary);
+  border-left: 3px solid var(--brand-primary);
+  margin-bottom: var(--spacing-sm);
+  border-radius: var(--radius-base);
+}
+
+.categoriaTitulo {
+  font-size: var(--font-base);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.categoriaStats {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  margin-top: var(--space-1);
+}
+
+/* Lista de permisos */
+.permisosList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+/* Item individual de permiso */
+.permisoItem {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  transition: all var(--duration-150) var(--ease-in-out);
+}
+
+.permisoItem:hover {
+  border-color: var(--border-secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Lado izquierdo: info del permiso */
+.permisoInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.permisoNombre {
+  font-size: var(--font-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.permisoCodigo {
+  font-size: var(--font-xs);
+  font-family: 'Courier New', monospace;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+.permisoDescripcion {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  line-height: var(--leading-relaxed);
+}
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.badgeCritico {
+  background: var(--error-bg);
+  color: var(--error-text);
+}
+
+.badgeOverride {
+  background: var(--info-bg);
+  color: var(--info-text);
+}
+
+.badgeOverrideNegativo {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+/* Lado derecho: controles */
+.permisoControls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--spacing-sm);
+  min-width: 150px;
+}
+
+.estadoActual {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
+
+.estadoIcon {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--font-bold);
+  font-size: var(--font-sm);
+}
+
+.estadoIcon.activo {
+  background: var(--success);
+  color: white;
+}
+
+.estadoIcon.inactivo {
+  background: var(--error);
+  color: white;
+}
+
+.infoRol {
+  font-size: var(--font-xs);
+  color: var(--text-tertiary);
+  text-align: right;
+}
+
+/* Botones de acción */
+.accionesGroup {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.btnAccion {
+  padding: var(--space-2) var(--spacing-md);
+  font-size: var(--font-xs);
+  font-weight: var(--font-medium);
+  border: none;
+  border-radius: var(--radius-base);
+  cursor: pointer;
+  transition: all var(--duration-150) var(--ease-in-out);
+  white-space: nowrap;
+}
+
+.btnAccion:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btnAccion:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.btnAgregar {
+  background: var(--success);
+  color: white;
+}
+
+.btnQuitar {
+  background: var(--warning);
+  color: white;
+}
+
+.btnResetear {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+}
+
+/* Empty state */
+.emptyState {
+  text-align: center;
+  padding: var(--spacing-2xl);
+  color: var(--text-secondary);
+}
+
+.emptyIcon {
+  font-size: 48px;
+  margin-bottom: var(--spacing-md);
+  opacity: 0.3;
+}
+
+.emptyMessage {
+  font-size: var(--font-base);
+  font-weight: var(--font-medium);
+}
+
+/* Scrollbar personalizado */
+.permisosScroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.permisosScroll::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-full);
+}
+
+.permisosScroll::-webkit-scrollbar-thumb {
+  background: var(--border-secondary);
+  border-radius: var(--radius-full);
+}
+
+.permisosScroll::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .permisoItem {
+    grid-template-columns: 1fr;
+  }
+
+  .permisoControls {
+    align-items: flex-start;
+    flex-direction: row;
+    justify-content: space-between;
+  }
+}
