@@ -386,11 +386,11 @@ async def actualizar_factura_compra(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes permiso para cargar FC"
             )
-        # Validar que esté controlado antes de cargar FC
-        if not factura.controlado:
+        # Validar que esté retirada antes de cargar FC
+        if not factura.retirado:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No se puede cargar FC sin que la factura esté controlada"
+                detail="No se puede cargar FC sin que la factura esté retirada"
             )
         # Establecer fecha automáticamente
         update_data['fc_fecha'] = datetime.now(UTC)

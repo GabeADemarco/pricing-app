@@ -19,10 +19,37 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Eliminar índice primero
-    op.drop_index(op.f('ix_facturas_compras_listo_para_pagar'), table_name='facturas_compras', if_exists=True)
-    # Eliminar columna
-    op.drop_column('facturas_compras', 'listo_para_pagar')
+    # Eliminar índice primero (usar try-except porque Alembic no soporta if_exists)
+    conn = op.get_bind()
+    try:
+        # Verificar si el índice existe antes de eliminarlo
+        result = conn.execute(sa.text("""
+            SELECT indexname 
+            FROM pg_indexes 
+            WHERE schemaname = 'public' 
+            AND tablename='facturas_compras' 
+            AND indexname='ix_facturas_compras_listo_para_pagar'
+        """))
+        if result.fetchone() is not None:
+            op.drop_index(op.f('ix_facturas_compras_listo_para_pagar'), table_name='facturas_compras')
+    except Exception:
+        # Si hay algún error, continuar (el índice puede no existir)
+        pass
+    
+    # Eliminar columna (verificar si existe primero)
+    try:
+        result_col = conn.execute(sa.text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_schema = 'public' 
+            AND table_name='facturas_compras' 
+            AND column_name='listo_para_pagar'
+        """))
+        if result_col.fetchone() is not None:
+            op.drop_column('facturas_compras', 'listo_para_pagar')
+    except Exception:
+        # Si hay algún error, continuar (la columna puede no existir)
+        pass
 
 
 def downgrade() -> None:
