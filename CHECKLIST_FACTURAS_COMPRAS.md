@@ -38,7 +38,10 @@ Crear usuarios de prueba para cada rol:
 
 ### Paso 1.5: Ajustes del Formulario de Creación
 
-- [ ] Modificar la obligatoriedad del iniciar proceso del formulario inicial
+- [x] Modificar la obligatoriedad del iniciar proceso del formulario inicial
+  - [x] Solo requiere al menos un documento completo (proforma o factura)
+  - [x] Validación en frontend y backend
+  - [x] Mensajes de error claros
 - [ ] Cambiar a guardado de archivos locales (en el servidor)
 
 ### Paso 2: Probar Acceso y Vista de Cada Rol
