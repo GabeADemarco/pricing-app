@@ -42,7 +42,13 @@ Crear usuarios de prueba para cada rol:
   - [x] Solo requiere al menos un documento completo (proforma o factura)
   - [x] Validación en frontend y backend
   - [x] Mensajes de error claros
-- [ ] Cambiar a guardado de archivos locales (en el servidor)
+- [x] Cambiar a guardado de archivos locales (en el servidor)
+  - [x] Crear endpoint POST /api/upload/factura para subir archivos localmente
+  - [x] Montar StaticFiles en /api/files/facturas para servir archivos
+  - [x] Actualizar FileUploadDropzone para usar nuevo endpoint local
+  - [x] Actualizar transformToViewUrl para manejar URLs locales
+  - [x] Formato de nombres: YYYYMMDD_HHMMSS_original_filename_username.ext
+  - [x] Archivos locales deberían funcionar mejor en popups que Nextcloud
 
 ### Paso 2: Probar Acceso y Vista de Cada Rol
 
