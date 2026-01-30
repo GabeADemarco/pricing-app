@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COMPRAS - Facturas de Compra</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #fff;
+            margin-bottom: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 0 5px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        button.danger {
+            background: #ef4444;
+        }
+        button.danger:hover {
+            background: #dc2626;
+        }
+        button.success {
+            background: #10b981;
+        }
+        button.success:hover {
+            background: #059669;
+        }
+        button:disabled {
+            background: #4b5563;
+            cursor: not-allowed;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #262626;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #404040;
+        }
+        th {
+            background: #1f1f1f;
+            color: #fff;
+            font-weight: 600;
+        }
+        tr:hover {
+            background: #2d2d2d;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge.borrador {
+            background: #6b7280;
+            color: white;
+        }
+        .badge.proceso {
+            background: #3b82f6;
+            color: white;
+        }
+        .badge.completado {
+            background: #10b981;
+            color: white;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            overflow-y: auto;
+        }
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background: #262626;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            margin: 20px;
+        }
+        .modal-content h2 {
+            margin-bottom: 20px;
+            color: #fff;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #e0e0e0;
+            font-weight: 500;
+        }
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #404040;
+            border-radius: 6px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            font-size: 14px;
+        }
+        .form-group textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        .required {
+            color: #ef4444;
+        }
+        .error {
+            color: #ef4444;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .help-text {
+            color: #9ca3af;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .actions-cell {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>COMPRAS - Facturas de Compra</h1>
+            <button onclick="abrirModalCrear()">Nueva Factura</button>
+        </div>
+
+        <table id="tablaFacturas">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Razón Social</th>
+                    <th>Proveedor</th>
+                    <th>Creada por</th>
+                    <th>Nro Proforma</th>
+                    <th>Nro Factura</th>
+                    <th>Fecha Carga</th>
+                    <th>Estado</th>
+                    <th>OC</th>
+                    <th>FC</th>
+                    <th>Retirado</th>
+                    <th>Controlado</th>
+                    <th>Pagado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="tbodyFacturas">
+                <!-- Se llena dinámicamente -->
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Modal Crear/Editar -->
+    <div id="modalFactura" class="modal">
+        <div class="modal-content">
+            <h2 id="modalTitulo">Nueva Factura</h2>
+            <form id="formFactura" onsubmit="guardarFactura(event)">
+                <div class="form-group">
+                    <label>Razón Social <span class="required">*</span></label>
+                    <select name="razon_social" required>
+                        <option value="Grupo Gauss">Grupo Gauss</option>
+                        <option value="Pastoriza">Pastoriza</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Proveedor <span class="required">*</span></label>
+                    <input type="text" name="proveedor_nombre" required>
+                </div>
+                <div class="form-group">
+                    <label>Nro Proforma</label>
+                    <input type="text" name="nro_proforma">
+                    <small class="help-text">Al menos uno de los documentos (proforma o factura) debe estar completo</small>
+                </div>
+                <div class="form-group">
+                    <label>Link Proforma</label>
+                    <input type="text" name="link_proforma" placeholder="URL del documento">
+                </div>
+                <div class="form-group">
+                    <label>Logística <span class="required">*</span></label>
+                    <select name="logistica" required>
+                        <option value="GAUSS">GAUSS</option>
+                        <option value="PROVEEDOR">PROVEEDOR</option>
+                        <option value="TERCERO">TERCERO</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Prioridad <span class="required">*</span></label>
+                    <select name="prioridad" required>
+                        <option value="NORMAL">NORMAL</option>
+                        <option value="URGENTE">URGENTE</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Nro Factura</label>
+                    <input type="text" name="nro_factura">
+                </div>
+                <div class="form-group">
+                    <label>Link Factura</label>
+                    <input type="text" name="link_factura" placeholder="URL del documento">
+                </div>
+                <div class="form-group">
+                    <label>Forma de Pago <span class="required">*</span></label>
+                    <select name="forma_pago" required>
+                        <option value="CONTADO">CONTADO</option>
+                        <option value="CHEQUE">CHEQUE</option>
+                        <option value="CTA CTE">CTA CTE</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Plazo</label>
+                    <input type="text" name="plazo">
+                </div>
+                <div class="form-group">
+                    <label>Tipo de Cambio</label>
+                    <input type="text" name="tipo_cambio" placeholder="Ej: 1480 - 3%">
+                </div>
+                <div class="form-group">
+                    <label>Observaciones</label>
+                    <textarea name="observaciones"></textarea>
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="iniciado" id="iniciado">
+                    <label for="iniciado">Iniciar proceso de carga de facturas</label>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" onclick="cerrarModal()">Cancelar</button>
+                    <button type="submit">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const STORAGE_KEY = 'facturas_compras_demo';
+        let facturaEditando = null;
+
+        // Cargar facturas al iniciar
+        window.addEventListener('load', () => {
+            cargarFacturas();
+            // Escuchar cambios en localStorage de otras pestañas
+            window.addEventListener('storage', cargarFacturas);
+        });
+
+        function getFacturas() {
+            const data = localStorage.getItem(STORAGE_KEY);
+            return data ? JSON.parse(data) : [];
+        }
+
+        function saveFacturas(facturas) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(facturas));
+            // Disparar evento para otras pestañas
+            window.dispatchEvent(new Event('storage'));
+        }
+
+        function cargarFacturas() {
+            const facturas = getFacturas();
+            const tbody = document.getElementById('tbodyFacturas');
+            tbody.innerHTML = '';
+
+            facturas.forEach(factura => {
+                const tr = document.createElement('tr');
+                const estado = factura.iniciado ? 'proceso' : 'borrador';
+                const estadoTexto = factura.iniciado ? 'En Proceso' : 'En borrador';
+
+                tr.innerHTML = `
+                    <td>${factura.id}</td>
+                    <td>${factura.razon_social || '-'}</td>
+                    <td>${factura.proveedor_nombre || '-'}</td>
+                    <td>${factura.creado_por_nombre || 'COMPRAS'}</td>
+                    <td>${factura.nro_proforma || '-'}</td>
+                    <td>${factura.nro_factura || '-'}</td>
+                    <td>${new Date(factura.fecha_carga).toLocaleDateString()}</td>
+                    <td><span class="badge ${estado}">${estadoTexto}</span></td>
+                    <td>${factura.oc_cargada ? '✓' : '-'}</td>
+                    <td>${factura.fc_cargada ? '✓' : '-'}</td>
+                    <td>${factura.retirado ? '✓' : '-'}</td>
+                    <td>${factura.controlado ? '✓' : '-'}</td>
+                    <td>${factura.pagado ? '✓' : '-'}</td>
+                    <td class="actions-cell">
+                        ${!factura.iniciado ? `
+                            <button onclick="iniciarProceso(${factura.id})" class="success">Iniciar Proceso</button>
+                            <button onclick="eliminarFactura(${factura.id})" class="danger">Eliminar</button>
+                        ` : ''}
+                        <button onclick="editarFactura(${factura.id})">Editar</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function abrirModalCrear() {
+            facturaEditando = null;
+            document.getElementById('modalTitulo').textContent = 'Nueva Factura';
+            document.getElementById('formFactura').reset();
+            document.getElementById('iniciado').checked = false;
+            document.getElementById('modalFactura').classList.add('active');
+        }
+
+        function editarFactura(id) {
+            const facturas = getFacturas();
+            facturaEditando = facturas.find(f => f.id === id);
+            if (!facturaEditando) return;
+
+            document.getElementById('modalTitulo').textContent = 'Editar Factura';
+            const form = document.getElementById('formFactura');
+            Object.keys(facturaEditando).forEach(key => {
+                const input = form.querySelector(`[name="${key}"]`);
+                if (input) {
+                    if (input.type === 'checkbox') {
+                        input.checked = facturaEditando[key];
+                    } else {
+                        input.value = facturaEditando[key] || '';
+                    }
+                }
+            });
+            document.getElementById('modalFactura').classList.add('active');
+        }
+
+        function cerrarModal() {
+            document.getElementById('modalFactura').classList.remove('active');
+            facturaEditando = null;
+        }
+
+        function guardarFactura(e) {
+            e.preventDefault();
+            const form = e.target;
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData.entries());
+            data.iniciado = form.querySelector('[name="iniciado"]').checked;
+
+            // Validación si se va a iniciar
+            if (data.iniciado) {
+                if (!data.razon_social || !data.proveedor_nombre || !data.logistica || !data.prioridad || !data.forma_pago) {
+                    alert('Para iniciar el proceso, debe completar todos los campos obligatorios');
+                    return;
+                }
+                const tieneProforma = data.nro_proforma && data.link_proforma;
+                const tieneFactura = data.nro_factura && data.link_factura;
+                if (!tieneProforma && !tieneFactura) {
+                    alert('Para iniciar el proceso, debe cargar al menos un documento completo (proforma o factura)');
+                    return;
+                }
+            }
+
+            const facturas = getFacturas();
+
+            if (facturaEditando) {
+                // Editar
+                const index = facturas.findIndex(f => f.id === facturaEditando.id);
+                facturas[index] = {
+                    ...facturas[index],
+                    ...data,
+                    updated_at: new Date().toISOString()
+                };
+            } else {
+                // Crear
+                const nuevaFactura = {
+                    id: facturas.length > 0 ? Math.max(...facturas.map(f => f.id)) + 1 : 1,
+                    ...data,
+                    oc_cargada: false,
+                    fc_cargada: false,
+                    retirado: false,
+                    controlado: false,
+                    pagado: false,
+                    creado_por_nombre: 'COMPRAS',
+                    fecha_carga: new Date().toISOString(),
+                    created_at: new Date().toISOString()
+                };
+                facturas.push(nuevaFactura);
+            }
+
+            saveFacturas(facturas);
+            cerrarModal();
+            cargarFacturas();
+        }
+
+        function iniciarProceso(id) {
+            if (!confirm('¿Está seguro de iniciar el proceso? La factura será visible para otros roles.')) return;
+            
+            const facturas = getFacturas();
+            const factura = facturas.find(f => f.id === id);
+            if (!factura) return;
+
+            // Validar campos obligatorios
+            if (!factura.razon_social || !factura.proveedor_nombre || !factura.logistica || !factura.prioridad || !factura.forma_pago) {
+                alert('Debe completar todos los campos obligatorios antes de iniciar el proceso');
+                return;
+            }
+            const tieneProforma = factura.nro_proforma && factura.link_proforma;
+            const tieneFactura = factura.nro_factura && factura.link_factura;
+            if (!tieneProforma && !tieneFactura) {
+                alert('Debe cargar al menos un documento completo (proforma o factura) antes de iniciar el proceso');
+                return;
+            }
+
+            factura.iniciado = true;
+            factura.updated_at = new Date().toISOString();
+            saveFacturas(facturas);
+            cargarFacturas();
+        }
+
+        function eliminarFactura(id) {
+            if (!confirm('¿Está seguro de eliminar esta factura?')) return;
+            
+            const facturas = getFacturas();
+            const nuevasFacturas = facturas.filter(f => f.id !== id);
+            saveFacturas(nuevasFacturas);
+            cargarFacturas();
+        }
+
+        // Cerrar modal al hacer click fuera
+        document.getElementById('modalFactura').addEventListener('click', (e) => {
+            if (e.target.id === 'modalFactura') {
+                cerrarModal();
+            }
+        });
+    </script>
+</body>
+</html>

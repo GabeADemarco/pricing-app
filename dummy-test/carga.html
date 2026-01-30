@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CARGA OC/FC - Facturas de Compra</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #fff;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            margin: 0 3px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        button:disabled {
+            background: #4b5563;
+            cursor: not-allowed;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #262626;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #404040;
+        }
+        th {
+            background: #1f1f1f;
+            color: #fff;
+            font-weight: 600;
+        }
+        tr:hover {
+            background: #2d2d2d;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge.proceso {
+            background: #3b82f6;
+            color: white;
+        }
+        .actions-cell {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CARGA OC/FC - Facturas de Compra</h1>
+        <p style="color: #9ca3af; margin-bottom: 20px;">Solo se muestran facturas iniciadas</p>
+
+        <table id="tablaFacturas">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Razón Social</th>
+                    <th>Proveedor</th>
+                    <th>Creada por</th>
+                    <th>Nro Proforma</th>
+                    <th>Nro Factura</th>
+                    <th>Fecha Carga</th>
+                    <th>Estado</th>
+                    <th>Retirado</th>
+                    <th>Controlado</th>
+                    <th>TC</th>
+                    <th>OC</th>
+                    <th>FC</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="tbodyFacturas">
+                <!-- Se llena dinámicamente -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const STORAGE_KEY = 'facturas_compras_demo';
+
+        window.addEventListener('load', () => {
+            cargarFacturas();
+            window.addEventListener('storage', cargarFacturas);
+        });
+
+        function getFacturas() {
+            const data = localStorage.getItem(STORAGE_KEY);
+            return data ? JSON.parse(data) : [];
+        }
+
+        function saveFacturas(facturas) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(facturas));
+            window.dispatchEvent(new Event('storage'));
+        }
+
+        function cargarFacturas() {
+            const facturas = getFacturas();
+            const iniciadas = facturas.filter(f => f.iniciado);
+            const tbody = document.getElementById('tbodyFacturas');
+            tbody.innerHTML = '';
+
+            if (iniciadas.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="14" style="text-align: center; padding: 20px; color: #9ca3af;">No hay facturas iniciadas</td></tr>';
+                return;
+            }
+
+            iniciadas.forEach(factura => {
+                const tr = document.createElement('tr');
+                const puedeCargarOC = factura.iniciado && !factura.oc_cargada;
+                const puedeCargarFC = factura.iniciado && factura.controlado && !factura.fc_cargada;
+
+                tr.innerHTML = `
+                    <td>${factura.id}</td>
+                    <td>${factura.razon_social || '-'}</td>
+                    <td>${factura.proveedor_nombre || '-'}</td>
+                    <td>${factura.creado_por_nombre || 'COMPRAS'}</td>
+                    <td>${factura.nro_proforma || '-'}</td>
+                    <td>${factura.nro_factura || '-'}</td>
+                    <td>${new Date(factura.fecha_carga).toLocaleDateString()}</td>
+                    <td><span class="badge proceso">En Proceso</span></td>
+                    <td>${factura.retirado ? '✓' : '-'}</td>
+                    <td>${factura.controlado ? '✓' : '-'}</td>
+                    <td>${factura.tipo_cambio || '-'}</td>
+                    <td>${factura.oc_cargada ? '✓' : '-'}</td>
+                    <td>${factura.fc_cargada ? '✓' : '-'}</td>
+                    <td class="actions-cell">
+                        <button onclick="marcarOcCargada(${factura.id})" ${!puedeCargarOC ? 'disabled' : ''}>
+                            ${factura.oc_cargada ? 'OC Cargada' : 'Marcar OC Cargada'}
+                        </button>
+                        <button onclick="marcarFcCargada(${factura.id})" ${!puedeCargarFC ? 'disabled' : ''}>
+                            ${factura.fc_cargada ? 'FC Cargada' : 'Marcar FC Cargada'}
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function marcarOcCargada(id) {
+            if (!confirm('¿Marcar OC como cargada?')) return;
+            
+            const facturas = getFacturas();
+            const factura = facturas.find(f => f.id === id);
+            if (!factura || !factura.iniciado) {
+                alert('Solo se puede cargar OC en facturas iniciadas');
+                return;
+            }
+
+            factura.oc_cargada = true;
+            factura.oc_fecha = new Date().toISOString();
+            factura.updated_at = new Date().toISOString();
+            saveFacturas(facturas);
+            cargarFacturas();
+        }
+
+        function marcarFcCargada(id) {
+            if (!confirm('¿Marcar FC como cargada?')) return;
+            
+            const facturas = getFacturas();
+            const factura = facturas.find(f => f.id === id);
+            if (!factura || !factura.iniciado) {
+                alert('Solo se puede cargar FC en facturas iniciadas');
+                return;
+            }
+            if (!factura.controlado) {
+                alert('La factura debe estar controlada antes de cargar FC');
+                return;
+            }
+
+            factura.fc_cargada = true;
+            factura.fc_fecha = new Date().toISOString();
+            factura.updated_at = new Date().toISOString();
+            saveFacturas(facturas);
+            cargarFacturas();
+        }
+    </script>
+</body>
+</html>
