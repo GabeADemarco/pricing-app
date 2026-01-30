@@ -18,20 +18,42 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Agregar columna iniciado a facturas_compras
-    op.add_column(
-        'facturas_compras',
-        sa.Column('iniciado', sa.Boolean(), nullable=False, server_default='false')
-    )
-    op.create_index(
-        op.f('ix_facturas_compras_iniciado'),
-        'facturas_compras',
-        ['iniciado'],
-        unique=False,
-    )
-
-    # Quitar server_default para futuras inserciones (deja el default en el modelo)
-    op.alter_column('facturas_compras', 'iniciado', server_default=None)
+    # Verificar si la columna iniciado ya existe (puede existir si se ejecutó la migración inicial 7c95ca8072fc)
+    conn = op.get_bind()
+    result = conn.execute(sa.text("""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name='facturas_compras' AND column_name='iniciado'
+    """))
+    
+    if result.fetchone() is None:
+        # La columna no existe, agregarla
+        op.add_column(
+            'facturas_compras',
+            sa.Column('iniciado', sa.Boolean(), nullable=False, server_default='false')
+        )
+        op.create_index(
+            op.f('ix_facturas_compras_iniciado'),
+            'facturas_compras',
+            ['iniciado'],
+            unique=False,
+        )
+        # Quitar server_default para futuras inserciones (deja el default en el modelo)
+        op.alter_column('facturas_compras', 'iniciado', server_default=None)
+    else:
+        # La columna ya existe, solo asegurarse de que el índice exista
+        result_idx = conn.execute(sa.text("""
+            SELECT indexname 
+            FROM pg_indexes 
+            WHERE tablename='facturas_compras' AND indexname='ix_facturas_compras_iniciado'
+        """))
+        if result_idx.fetchone() is None:
+            op.create_index(
+                op.f('ix_facturas_compras_iniciado'),
+                'facturas_compras',
+                ['iniciado'],
+                unique=False,
+            )
 
 
 def downgrade() -> None:

@@ -72,6 +72,11 @@ def upgrade() -> None:
         sa.Column('forma_pago', forma_pago_enum, nullable=True),
         sa.Column('plazo', sa.String(100), nullable=True),
         sa.Column('tipo_cambio', sa.String(100), nullable=True),
+        
+        # Estado general del flujo
+        # - iniciado = False  -> borrador (solo visible para COMPRAS / ADMIN)
+        # - iniciado = True   -> visible para todos los roles según sus permisos
+        sa.Column('iniciado', sa.Boolean(), nullable=False, server_default='false'),
         sa.Column('listo_para_pagar', sa.Boolean(), nullable=False, server_default='false'),
         
         # Campos de CARGA_OC_FC_GBP (carga de OC y FC en GBP/ERP)
@@ -106,6 +111,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_facturas_compras_razon_social'), 'facturas_compras', ['razon_social'], unique=False)
     op.create_index(op.f('ix_facturas_compras_fecha_carga'), 'facturas_compras', ['fecha_carga'], unique=False)
     op.create_index(op.f('ix_facturas_compras_proveedor_id'), 'facturas_compras', ['proveedor_id'], unique=False)
+    op.create_index(op.f('ix_facturas_compras_iniciado'), 'facturas_compras', ['iniciado'], unique=False)
     op.create_index(op.f('ix_facturas_compras_listo_para_pagar'), 'facturas_compras', ['listo_para_pagar'], unique=False)
     op.create_index(op.f('ix_facturas_compras_oc_cargada'), 'facturas_compras', ['oc_cargada'], unique=False)
     op.create_index(op.f('ix_facturas_compras_fc_cargada'), 'facturas_compras', ['fc_cargada'], unique=False)
@@ -155,6 +161,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_facturas_compras_fc_cargada'), table_name='facturas_compras')
     op.drop_index(op.f('ix_facturas_compras_oc_cargada'), table_name='facturas_compras')
     op.drop_index(op.f('ix_facturas_compras_listo_para_pagar'), table_name='facturas_compras')
+    op.drop_index(op.f('ix_facturas_compras_iniciado'), table_name='facturas_compras')
     op.drop_index(op.f('ix_facturas_compras_proveedor_id'), table_name='facturas_compras')
     op.drop_index(op.f('ix_facturas_compras_fecha_carga'), table_name='facturas_compras')
     op.drop_index(op.f('ix_facturas_compras_razon_social'), table_name='facturas_compras')
