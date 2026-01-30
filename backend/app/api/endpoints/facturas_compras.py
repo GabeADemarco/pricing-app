@@ -357,11 +357,12 @@ async def actualizar_factura_compra(
     # Verificar permisos según los campos que se actualizan
     update_data = factura_update.model_dump(exclude_unset=True)
     
-    # Campos de COMPRAS
+    # Campos de COMPRAS (campos editables normales, excluyendo acciones especiales)
     campos_compras = {
         'razon_social', 'proveedor_id', 'proveedor_nombre', 'nro_proforma',
         'link_proforma', 'logistica', 'prioridad', 'nro_factura', 'link_factura',
-        'forma_pago', 'plazo', 'tipo_cambio', 'listo_para_pagar'
+        'forma_pago', 'plazo', 'tipo_cambio'
+        # Nota: 'listo_para_pagar' NO está aquí porque tiene su propia verificación de permisos más abajo
     }
     if any(campo in update_data for campo in campos_compras):
         if not verificar_permiso(db, current_user, 'facturas_compras.editar_campos_compras'):
@@ -370,7 +371,7 @@ async def actualizar_factura_compra(
                 detail="No tienes permiso para editar campos de COMPRAS"
             )
     
-    # Marcar listo para pagar
+    # Marcar listo para pagar (acción especial con permiso específico)
     if 'listo_para_pagar' in update_data and update_data['listo_para_pagar']:
         if not verificar_permiso(db, current_user, 'facturas_compras.marcar_listo_pagar'):
             raise HTTPException(
