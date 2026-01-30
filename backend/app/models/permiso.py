@@ -399,7 +399,6 @@ PERMISOS_SISTEMA = [
         "categoria": CategoriaPermiso.ADMINISTRACION,
         "orden": 56
     },
-<<<<<<< HEAD
     {
         "codigo": "admin.gestionar_mla_banlist",
         "nombre": "Gestionar MLA banlist",
