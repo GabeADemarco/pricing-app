@@ -28,6 +28,12 @@ git push origin feature/my-feature
 
 **Full documentation:** [BRANCHING.md](BRANCHING.md)
 
+### 🔐 Git Remotes (CRITICAL)
+- **origin** = Repo del usuario (GabeADemarco): https://github.com/GabeADemarco/pricing-app
+- **upstream** = Repo original (sernafernando)
+- ✅ SIEMPRE hacer push a `origin` (repo del usuario)
+- ❌ NUNCA hacer push a `upstream` sin autorización explícita del usuario
+
 ## 🎯 CRITICAL: Always Load Relevant Skills
 
 Before writing ANY code, you MUST load and follow the appropriate skill documentation:
