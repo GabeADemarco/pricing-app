@@ -8,6 +8,7 @@ import Layout from './components/Layout';
 import Productos from './pages/Productos';
 import Tienda from './pages/Tienda';
 import Navbar from './components/Navbar';
+import AppLayout from './components/AppLayout';
 import Admin from './pages/Admin';
 import UltimosCambios from './pages/UltimosCambios';
 import PreciosListas from './pages/PreciosListas';
@@ -77,15 +78,12 @@ function App() {
           <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<ProtectedRoute><SmartRedirect /></ProtectedRoute>} />
-          <Route path="*" element={
+          <Route element={
             <ProtectedRoute>
-              <Navbar />
-              <ModalCalculadora
-                isOpen={mostrarCalculadora}
-                onClose={() => setMostrarCalculadora(false)}
-              />
-              <Routes>
-                <Route path="/productos" element={
+              <AppLayout />
+            </ProtectedRoute>
+          }>
+            <Route path="/productos" element={
                   <ProtectedRoute permiso="productos.ver">
                     <Productos />
                   </ProtectedRoute>
@@ -180,9 +178,7 @@ function App() {
                     <FacturasCompras />
                   </ProtectedRoute>
                 } />
-              </Routes>
-            </ProtectedRoute>
-          } />
+          </Route>
           </Routes>
         </BrowserRouter>
       </PermisosProvider>

@@ -122,9 +122,10 @@ async def sync_commercial_transactions_guid(
             # Usar rango específico
             pass
         else:
-            # Usar days
-            fecha_hasta = datetime.now()
-            fecha_desde = fecha_hasta - timedelta(days=days)
+            # Usar days - siempre días completos (00:00:00 a 23:59:59)
+            hoy = datetime.now().date()
+            fecha_hasta = datetime.combine(hoy, datetime.max.time()).replace(microsecond=0)  # Hoy 23:59:59
+            fecha_desde = datetime.combine(hoy - timedelta(days=days), datetime.min.time())  # N días atrás 00:00:00
         
         fecha_desde_str = fecha_desde.strftime("%Y-%m-%d %H:%M:%S")
         fecha_hasta_str = fecha_hasta.strftime("%Y-%m-%d %H:%M:%S")
@@ -254,6 +255,12 @@ async def sync_commercial_transactions_guid(
                     'sm_id': parse_int(record.get('sm_id')),
                     'country_id': parse_int(record.get('country_id')),
                     'state_id': parse_int(record.get('state_id')),
+                    
+                    # FIX: Agregar df_id y sd_id que estaban faltando
+                    'df_id': parse_int(record.get('df_id')),
+                    'sd_id': parse_int(record.get('sd_id')),
+                    'dl_id': parse_int(record.get('dl_id')),
+                    'st_id': parse_int(record.get('st_id')),
                 }
                 
                 if existente:
