@@ -1,7 +1,7 @@
 """add mlp_official_store_id to ml_ventas_metricas and tienda_oficial to offset consumo tables
 
 Revision ID: 20250127_tienda_oficial
-Revises: 20250126_last_migration
+Revises: add_items_sin_mla_permisos
 Create Date: 2025-01-27 00:00:00
 
 Agrega mlp_official_store_id a ml_ventas_metricas para poder filtrar rentabilidad por tienda oficial.

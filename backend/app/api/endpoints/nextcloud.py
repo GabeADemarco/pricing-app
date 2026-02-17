@@ -70,11 +70,9 @@ async def upload_file_to_nextcloud(
         file_extension = os.path.splitext(file.filename)[1]
         file_base_name = os.path.splitext(file.filename)[0]
         
-        # Incluir username del usuario actual y TEST al final
-        # TODO: TEMPORAL - Remover "_TEST" antes de merge a producción
-        # El sufijo "_TEST" es solo para desarrollo, permite identificar y borrar fácilmente archivos de prueba
+        # Incluir username del usuario actual para identificar quién subió el archivo
         username_safe = current_user.username.replace('@', '_at_').replace('.', '_')
-        safe_filename = f"{timestamp}_{file_base_name}_{username_safe}_TEST{file_extension}"
+        safe_filename = f"{timestamp}_{file_base_name}_{username_safe}{file_extension}"
         
         # Ruta en Nextcloud
         remote_path = f"/{folder}/{safe_filename}"
