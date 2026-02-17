@@ -45,6 +45,9 @@ env/
 .DS_Store
 Thumbs.db
 
+# Version managers (asdf, mise, rtx)
+.tool-versions
+
 # Environment variables
 .env
 .env.local
@@ -57,9 +60,6 @@ Thumbs.db
 *.db
 *.sqlite
 *.sqlite3
-*.sql
-*.sql.gz
-DB/
 
 # Streamlit app
 st_app.py
@@ -67,18 +67,10 @@ st_app.py
 backend/migrations/check_tb_item_serials_columns.sql
 backend/TABLAS_PENDIENTES.txt
 nul
-AGENTS.md
+
 .gga
 gmaps
 
-# Scripts de desarrollo local (no commitear)
-start-backend.ps1
-start-frontend.ps1
-
-# Archivos temporales de desarrollo
-variantes-pink-pagado.html
-iniciar.md
-
-# Archivos subidos localmente
-backend/uploads/
-uploads/
+# Backup files
+*.backup*
+.backup*

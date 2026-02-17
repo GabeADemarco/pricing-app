@@ -10,6 +10,7 @@ from app.models.auditoria import Auditoria
 from app.models.marca_pm import MarcaPM
 from app.models.mla_banlist import MLABanlist
 from app.models.item_sin_mla_banlist import ItemSinMLABanlist
+from app.models.comparacion_listas_banlist import ComparacionListasBanlist
 from app.models.calculo_pricing import CalculoPricing
 from app.models.mercadolibre_item_publicado import MercadoLibreItemPublicado
 from app.models.ml_publication_snapshot import MLPublicationSnapshot
@@ -38,7 +39,10 @@ from app.models.motoquero import Motoquero
 from app.models.zona_reparto import ZonaReparto
 from app.models.asignacion_turbo import AsignacionTurbo
 from app.models.geocoding_cache import GeocodingCache
-from app.models.factura_compra import FacturaCompra, FacturaCompraObservacion, RazonSocial, Logistica, Prioridad, FormaPago
+from app.models.alerta import Alerta, AlertaUsuarioDestinatario, AlertaUsuarioEstado, ConfiguracionAlerta
+from app.models.asignacion import Asignacion
+from app.models.cuenta_corriente_proveedor import CuentaCorrienteProveedor
+from app.models.cuenta_corriente_cliente import CuentaCorrienteCliente
 
 __all__ = [
     "ProductoERP",
@@ -57,6 +61,7 @@ __all__ = [
     "MarcaPM",
     "MLABanlist",
     "ItemSinMLABanlist",
+    "ComparacionListasBanlist",
     "CalculoPricing",
     "MercadoLibreItemPublicado",
     "MLPublicationSnapshot",
@@ -90,10 +95,11 @@ __all__ = [
     "ZonaReparto",
     "AsignacionTurbo",
     "GeocodingCache",
-    "FacturaCompra",
-    "FacturaCompraObservacion",
-    "RazonSocial",
-    "Logistica",
-    "Prioridad",
-    "FormaPago"
+    "Alerta",
+    "AlertaUsuarioDestinatario",
+    "AlertaUsuarioEstado",
+    "ConfiguracionAlerta",
+    "Asignacion",
+    "CuentaCorrienteProveedor",
+    "CuentaCorrienteCliente",
 ]

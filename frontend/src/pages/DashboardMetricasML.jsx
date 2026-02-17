@@ -1,13 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import axios from 'axios';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import api from '../services/api';
 import styles from './DashboardMetricasML.module.css';
 import TabRentabilidad from '../components/TabRentabilidad';
 import PaginationControls from '../components/PaginationControls';
 import { useQueryFilters } from '../hooks/useQueryFilters';
 import { useServerPagination } from '../hooks/useServerPagination';
-
-// API base URL
-const API_URL = import.meta.env.VITE_API_URL;
 
 // Helper para obtener fechas por defecto
 const getDefaultFechaDesde = () => {
@@ -23,23 +20,62 @@ const getDefaultFechaHasta = () => {
 
 export default function DashboardMetricasML() {
   const [loading, setLoading] = useState(true);
+  const [filtroRapidoActivo, setFiltroRapidoActivo] = useState('mesActual');
+  const [mostrarDropdownFecha, setMostrarDropdownFecha] = useState(false);
   
   // Usar query params para tab, fechas y filtros de resumen
   const { getFilter, updateFilters } = useQueryFilters({
     tab: 'resumen',
     fecha_desde: getDefaultFechaDesde(),
     fecha_hasta: getDefaultFechaHasta(),
-    marca: '',
-    categoria: '',
-    tienda_oficial: ''
+    marcas: '',
+    categorias: '',
+    tiendas_oficiales: '',
+    pms: ''
   });
 
   const tabActivo = getFilter('tab');
   const fechaDesde = getFilter('fecha_desde');
   const fechaHasta = getFilter('fecha_hasta');
-  const marcaSeleccionada = getFilter('marca');
-  const categoriaSeleccionada = getFilter('categoria');
-  const tiendaOficialSeleccionada = getFilter('tienda_oficial');
+  const marcasQuery = getFilter('marcas');
+  const categoriasQuery = getFilter('categorias');
+  const tiendasOficialesQuery = getFilter('tiendas_oficiales');
+  const pmsQuery = getFilter('pms');
+  
+  // Convertir strings a arrays
+  const marcasSeleccionadas = useMemo(() => {
+    if (!marcasQuery) return [];
+    return marcasQuery.split(',').filter(Boolean);
+  }, [marcasQuery]);
+
+  const categoriasSeleccionadas = useMemo(() => {
+    if (!categoriasQuery) return [];
+    return categoriasQuery.split(',').filter(Boolean);
+  }, [categoriasQuery]);
+
+  const tiendasOficialesSeleccionadas = useMemo(() => {
+    if (!tiendasOficialesQuery) return [];
+    return tiendasOficialesQuery.split(',').filter(Boolean);
+  }, [tiendasOficialesQuery]);
+
+  const pmsSeleccionados = useMemo(() => {
+    if (!pmsQuery) return [];
+    return pmsQuery.split(',').filter(Boolean).map(id => parseInt(id.trim(), 10));
+  }, [pmsQuery]);
+
+  // Fechas temporales para el dropdown (sincronizadas con las fechas actuales)
+  const [fechaTemporal, setFechaTemporal] = useState({
+    desde: fechaDesde,
+    hasta: fechaHasta
+  });
+
+  // Sincronizar fechas temporales cuando cambian las fechas del filtro
+  useEffect(() => {
+    setFechaTemporal({
+      desde: fechaDesde,
+      hasta: fechaHasta
+    });
+  }, [fechaDesde, fechaHasta]);
 
   // Datos
   const [metricasGenerales, setMetricasGenerales] = useState(null);
@@ -48,15 +84,47 @@ export default function DashboardMetricasML() {
   const [ventasPorLogistica, setVentasPorLogistica] = useState([]);
   const [ventasPorDia, setVentasPorDia] = useState([]);
   const [topProductos, setTopProductos] = useState([]);
+  const [pms, setPms] = useState([]);
+
+  // Opciones disponibles para los filtros (independientes de los datos filtrados)
+  const [marcasDisponibles, setMarcasDisponibles] = useState([]);
+  const [categoriasDisponibles, setCategoriasDisponibles] = useState([]);
+
+  // Búsquedas en filtros
+  const [busquedaMarca, setBusquedaMarca] = useState('');
+  const [busquedaCategoria, setBusquedaCategoria] = useState('');
+
+  // Toast notification
+  const [toast, setToast] = useState(null);
+  const toastTimeoutRef = useRef(null);
+
+  // Función para mostrar toast
+  const showToast = (message, type = 'success') => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    setToast({ message, type });
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 3000);
+  };
+
+  // Cleanup del toast timeout al desmontar
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Hook de paginación server-side (solo para tab de operaciones)
   const paginationFilters = useMemo(() => ({
     from_date: fechaDesde,
     to_date: fechaHasta,
-    ...(marcaSeleccionada && { marca: marcaSeleccionada }),
-    ...(categoriaSeleccionada && { categoria: categoriaSeleccionada }),
-    ...(tiendaOficialSeleccionada && { tienda_oficial: tiendaOficialSeleccionada })
-  }), [fechaDesde, fechaHasta, marcaSeleccionada, categoriaSeleccionada, tiendaOficialSeleccionada]);
+    ...(marcasSeleccionadas.length > 0 && { marcas: marcasSeleccionadas.join(',') }),
+    ...(categoriasSeleccionadas.length > 0 && { categorias: categoriasSeleccionadas.join(',') }),
+    ...(tiendasOficialesSeleccionadas.length > 0 && { tiendas_oficiales: tiendasOficialesSeleccionadas.join(',') }),
+    ...(pmsSeleccionados.length > 0 && { pm_ids: pmsSeleccionados.join(',') })
+  }), [fechaDesde, fechaHasta, marcasSeleccionadas, categoriasSeleccionadas, tiendasOficialesSeleccionadas, pmsSeleccionados]);
 
   const pagination = useServerPagination({
     endpoint: '/ventas-ml/operaciones-con-metricas',
@@ -66,30 +134,38 @@ export default function DashboardMetricasML() {
     enabled: tabActivo === 'operaciones'
   });
 
-  // Marcas y categorías disponibles extraídas de los datos reales (después de pagination)
-  const marcasDisponibles = useMemo(() => {
-    if (tabActivo === 'resumen' && ventasPorMarca.length > 0) {
-      return ventasPorMarca.map(v => v.marca).filter(Boolean).sort();
-    }
-    // En tab operaciones, extraer de pagination.data
-    if (tabActivo === 'operaciones' && pagination.data.length > 0) {
-      const marcas = [...new Set(pagination.data.map(op => op.marca).filter(Boolean))];
-      return marcas.sort();
-    }
-    return [];
-  }, [tabActivo, ventasPorMarca, pagination.data]);
+  // Cargar opciones disponibles para filtros
+  const cargarOpcionesDisponibles = useCallback(async () => {
+    try {
+      // Params comunes para ambos endpoints
+      const baseParams = {
+        fecha_desde: fechaDesde,
+        fecha_hasta: fechaHasta
+      };
+      if (tiendasOficialesSeleccionadas.length > 0) baseParams.tiendas_oficiales = tiendasOficialesSeleccionadas.join(',');
+      if (pmsSeleccionados.length > 0) baseParams.pm_ids = pmsSeleccionados.join(',');
 
-  const categoriasDisponibles = useMemo(() => {
-    if (tabActivo === 'resumen' && ventasPorCategoria.length > 0) {
-      return ventasPorCategoria.map(v => v.categoria).filter(Boolean).sort();
+      // Para marcas disponibles: aplicar filtro de categorías (pero no de marcas)
+      const marcasParams = { ...baseParams };
+      if (categoriasSeleccionadas.length > 0) marcasParams.categorias = categoriasSeleccionadas.join(',');
+
+      // Para categorías disponibles: aplicar filtro de marcas (pero no de categorías)
+      const categoriasParams = { ...baseParams };
+      if (marcasSeleccionadas.length > 0) categoriasParams.marcas = marcasSeleccionadas.join(',');
+
+      const [marcasRes, categoriasRes] = await Promise.all([
+        api.get('/dashboard-ml/marcas-disponibles', { params: marcasParams }),
+        api.get('/dashboard-ml/categorias-disponibles', { params: categoriasParams })
+      ]);
+
+      setMarcasDisponibles(marcasRes.data || []);
+      setCategoriasDisponibles(categoriasRes.data || []);
+    } catch (error) {
+      console.error('Error cargando opciones disponibles:', error);
+      setMarcasDisponibles([]);
+      setCategoriasDisponibles([]);
     }
-    // En tab operaciones, extraer de pagination.data
-    if (tabActivo === 'operaciones' && pagination.data.length > 0) {
-      const categorias = [...new Set(pagination.data.map(op => op.categoria).filter(Boolean))];
-      return categorias.sort();
-    }
-    return [];
-  }, [tabActivo, ventasPorCategoria, pagination.data]);
+  }, [fechaDesde, fechaHasta, marcasSeleccionadas, categoriasSeleccionadas, tiendasOficialesSeleccionadas, pmsSeleccionados]);
 
 
 
@@ -97,17 +173,15 @@ export default function DashboardMetricasML() {
   const cargarDashboard = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const headers = { Authorization: `Bearer ${token}` };
-
       const params = {
         fecha_desde: fechaDesde,
         fecha_hasta: fechaHasta
       };
 
-      if (marcaSeleccionada) params.marca = marcaSeleccionada;
-      if (categoriaSeleccionada) params.categoria = categoriaSeleccionada;
-      if (tiendaOficialSeleccionada) params.tienda_oficial = tiendaOficialSeleccionada;
+      if (marcasSeleccionadas.length > 0) params.marcas = marcasSeleccionadas.join(',');
+      if (categoriasSeleccionadas.length > 0) params.categorias = categoriasSeleccionadas.join(',');
+      if (tiendasOficialesSeleccionadas.length > 0) params.tiendas_oficiales = tiendasOficialesSeleccionadas.join(',');
+      if (pmsSeleccionados.length > 0) params.pm_ids = pmsSeleccionados.join(',');
 
       // Cargar todos los datos en paralelo
       const [
@@ -118,12 +192,12 @@ export default function DashboardMetricasML() {
         diasRes,
         productosRes
       ] = await Promise.all([
-        axios.get(`${API_URL}/dashboard-ml/metricas-generales`, { params, headers }),
-        axios.get(`${API_URL}/dashboard-ml/por-marca`, { params, headers }),
-        axios.get(`${API_URL}/dashboard-ml/por-categoria`, { params, headers }),
-        axios.get(`${API_URL}/dashboard-ml/por-logistica`, { params, headers }),
-        axios.get(`${API_URL}/dashboard-ml/por-dia`, { params, headers }),
-        axios.get(`${API_URL}/dashboard-ml/top-productos`, { params, headers })
+        api.get('/dashboard-ml/metricas-generales', { params }),
+        api.get('/dashboard-ml/por-marca', { params }),
+        api.get('/dashboard-ml/por-categoria', { params }),
+        api.get('/dashboard-ml/por-logistica', { params }),
+        api.get('/dashboard-ml/por-dia', { params }),
+        api.get('/dashboard-ml/top-productos', { params })
       ]);
 
       setMetricasGenerales(metricasRes.data);
@@ -132,18 +206,33 @@ export default function DashboardMetricasML() {
       setVentasPorLogistica(logisticaRes.data || []);
       setVentasPorDia(diasRes.data || []);
       setTopProductos(productosRes.data || []);
-    } catch (error) {
+    } catch {
       alert('Error al cargar el dashboard');
     } finally {
       setLoading(false);
     }
-  }, [fechaDesde, fechaHasta, marcaSeleccionada, categoriaSeleccionada, tiendaOficialSeleccionada]);
+  }, [fechaDesde, fechaHasta, marcasSeleccionadas, categoriasSeleccionadas, tiendasOficialesSeleccionadas, pmsSeleccionados]);
 
   useEffect(() => {
     if (fechaDesde && fechaHasta) {
       cargarDashboard();
+      cargarOpcionesDisponibles();
     }
-  }, [fechaDesde, fechaHasta, cargarDashboard]);
+  }, [fechaDesde, fechaHasta, cargarDashboard, cargarOpcionesDisponibles]);
+
+  // Cargar PMs y opciones de filtros al montar el componente
+  useEffect(() => {
+    const cargarPMs = async () => {
+      try {
+        const response = await api.get('/usuarios/pms', { params: { solo_con_marcas: true } });
+        setPms(response.data);
+      } catch (error) {
+        console.error('Error al cargar PMs:', error);
+      }
+    };
+    cargarPMs();
+    cargarOpcionesDisponibles();
+  }, [cargarOpcionesDisponibles]);
 
   const formatearMoneda = (monto) => {
     return new Intl.NumberFormat('es-AR', {
@@ -193,26 +282,26 @@ export default function DashboardMetricasML() {
         desde.setDate(desde.getDate() - 1);
         hasta = new Date(desde);
         break;
-      case '3dias':
+      case '3d':
         desde = new Date(hoy);
         desde.setDate(desde.getDate() - 2);
         break;
-      case 'semana':
+      case '7d':
         desde = new Date(hoy);
         desde.setDate(desde.getDate() - 6);
         break;
-      case '2semanas':
+      case '14d':
         desde = new Date(hoy);
         desde.setDate(desde.getDate() - 13);
         break;
       case 'mesActual':
         desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
         break;
-      case '30dias':
+      case '30d':
         desde = new Date(hoy);
         desde.setDate(desde.getDate() - 29);
         break;
-      case '3meses':
+      case '3m':
         desde = new Date(hoy);
         desde.setMonth(desde.getMonth() - 3);
         break;
@@ -220,10 +309,110 @@ export default function DashboardMetricasML() {
         return;
     }
 
+    setFiltroRapidoActivo(filtro);
+    setMostrarDropdownFecha(false);
     updateFilters({
       fecha_desde: formatearFechaISO(desde),
       fecha_hasta: formatearFechaISO(hasta)
     });
+  };
+
+  const aplicarFechaPersonalizada = () => {
+    setFiltroRapidoActivo('custom');
+    setMostrarDropdownFecha(false);
+    updateFilters({
+      fecha_desde: fechaTemporal.desde,
+      fecha_hasta: fechaTemporal.hasta
+    });
+  };
+
+  // Handlers para selector múltiple de Marcas
+  const toggleMarca = (marca) => {
+    const nuevasSeleccionadas = marcasSeleccionadas.includes(marca)
+      ? marcasSeleccionadas.filter(m => m !== marca)
+      : [...marcasSeleccionadas, marca];
+    
+    updateFilters({ marcas: nuevasSeleccionadas.join(',') || '' });
+  };
+
+  const limpiarMarcas = () => {
+    updateFilters({ marcas: '' });
+  };
+
+  // Handlers para selector múltiple de Categorías
+  const toggleCategoria = (categoria) => {
+    const nuevasSeleccionadas = categoriasSeleccionadas.includes(categoria)
+      ? categoriasSeleccionadas.filter(c => c !== categoria)
+      : [...categoriasSeleccionadas, categoria];
+    
+    updateFilters({ categorias: nuevasSeleccionadas.join(',') || '' });
+  };
+
+  const limpiarCategorias = () => {
+    updateFilters({ categorias: '' });
+  };
+
+  // Handlers para selector múltiple de Tiendas Oficiales
+  const toggleTiendaOficial = (tiendaId) => {
+    const nuevasSeleccionadas = tiendasOficialesSeleccionadas.includes(tiendaId)
+      ? tiendasOficialesSeleccionadas.filter(t => t !== tiendaId)
+      : [...tiendasOficialesSeleccionadas, tiendaId];
+    
+    updateFilters({ tiendas_oficiales: nuevasSeleccionadas.join(',') || '' });
+  };
+
+  const limpiarTiendasOficiales = () => {
+    updateFilters({ tiendas_oficiales: '' });
+  };
+
+  // Exportar operaciones a Excel
+  const exportarOperaciones = async () => {
+    try {
+      showToast('Generando archivo Excel...', 'info');
+      
+      const params = {
+        from_date: fechaDesde,
+        to_date: fechaHasta
+      };
+      
+      if (marcasSeleccionadas.length > 0) params.marcas = marcasSeleccionadas.join(',');
+      if (categoriasSeleccionadas.length > 0) params.categorias = categoriasSeleccionadas.join(',');
+      if (tiendasOficialesSeleccionadas.length > 0) params.tiendas_oficiales = tiendasOficialesSeleccionadas.join(',');
+      if (pmsSeleccionados.length > 0) params.pm_ids = pmsSeleccionados.join(',');
+      
+      const response = await api.get('/ventas-ml/exportar-operaciones', {
+        params,
+        responseType: 'blob'
+      });
+      
+      // Crear URL del blob y descargar
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `operaciones_ml_${fechaDesde}_${fechaHasta}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      showToast('✅ Archivo descargado correctamente', 'success');
+    } catch (error) {
+      console.error('Error exportando operaciones:', error);
+      showToast('❌ Error al exportar operaciones', 'error');
+    }
+  };
+
+  // Handlers para selector múltiple de PMs
+  const togglePM = (pmId) => {
+    const nuevosSeleccionados = pmsSeleccionados.includes(pmId)
+      ? pmsSeleccionados.filter(id => id !== pmId)
+      : [...pmsSeleccionados, pmId];
+    
+    updateFilters({ pms: nuevosSeleccionados.join(',') || '' });
+  };
+
+  const limpiarPMs = () => {
+    updateFilters({ pms: '' });
   };
 
   // La búsqueda ahora es server-side via el hook
@@ -256,108 +445,327 @@ export default function DashboardMetricasML() {
           </button>
         </div>
 
-        {/* Filtros Rápidos */}
-        <div className={styles.filtrosRapidos}>
-          <button onClick={() => aplicarFiltroRapido('hoy')} className={styles.btnFiltroRapido}>
-            Hoy
-          </button>
-          <button onClick={() => aplicarFiltroRapido('ayer')} className={styles.btnFiltroRapido}>
-            Ayer
-          </button>
-          <button onClick={() => aplicarFiltroRapido('3dias')} className={styles.btnFiltroRapido}>
-            Últimos 3 días
-          </button>
-          <button onClick={() => aplicarFiltroRapido('semana')} className={styles.btnFiltroRapido}>
-            Última semana
-          </button>
-          <button onClick={() => aplicarFiltroRapido('2semanas')} className={styles.btnFiltroRapido}>
-            Últimas 2 semanas
-          </button>
-          <button onClick={() => aplicarFiltroRapido('mesActual')} className={styles.btnFiltroRapido}>
-            Mes actual
-          </button>
-          <button onClick={() => aplicarFiltroRapido('30dias')} className={styles.btnFiltroRapido}>
-            Últimos 30 días
-          </button>
-          <button onClick={() => aplicarFiltroRapido('3meses')} className={styles.btnFiltroRapido}>
-            Últimos 3 meses
-          </button>
+        {/* Contenedor con filtros rápidos + botón reload */}
+        <div className={styles.filtrosRapidosWrapper}>
+          {/* Filtros Rápidos Compactos */}
+          <div className={styles.filtrosRapidos}>
+            <button 
+              onClick={() => setMostrarDropdownFecha(!mostrarDropdownFecha)} 
+              className={`${styles.btnFiltroRapido} ${styles.btnCalendar}`}
+              title="Seleccionar rango personalizado"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+            </button>
+            
+            <button 
+              onClick={() => aplicarFiltroRapido('hoy')} 
+              className={`${styles.btnFiltroRapido} ${filtroRapidoActivo === 'hoy' ? styles.activo : ''}`}
+            >
+              Hoy
+            </button>
+            <button 
+              onClick={() => aplicarFiltroRapido('ayer')} 
+              className={`${styles.btnFiltroRapido} ${filtroRapidoActivo === 'ayer' ? styles.activo : ''}`}
+            >
+              Ayer
+            </button>
+            <button 
+              onClick={() => aplicarFiltroRapido('3d')} 
+              className={`${styles.btnFiltroRapido} ${filtroRapidoActivo === '3d' ? styles.activo : ''}`}
+            >
+              3d
+            </button>
+            <button 
+              onClick={() => aplicarFiltroRapido('7d')} 
+              className={`${styles.btnFiltroRapido} ${filtroRapidoActivo === '7d' ? styles.activo : ''}`}
+            >
+              7d
+            </button>
+            <button 
+              onClick={() => aplicarFiltroRapido('14d')} 
+              className={`${styles.btnFiltroRapido} ${filtroRapidoActivo === '14d' ? styles.activo : ''}`}
+            >
+              14d
+            </button>
+            <button
+              onClick={() => aplicarFiltroRapido('mesActual')}
+              className={`${styles.btnFiltroRapido} ${filtroRapidoActivo === 'mesActual' ? styles.activo : ''}`}
+            >
+              Mes actual
+            </button>
+            <button 
+              onClick={() => aplicarFiltroRapido('30d')} 
+              className={`${styles.btnFiltroRapido} ${filtroRapidoActivo === '30d' ? styles.activo : ''}`}
+            >
+              30d
+            </button>
+            <button 
+              onClick={() => aplicarFiltroRapido('3m')} 
+              className={`${styles.btnFiltroRapido} ${filtroRapidoActivo === '3m' ? styles.activo : ''}`}
+            >
+              3m
+            </button>
+
+            {/* Dropdown de fecha personalizada */}
+            {mostrarDropdownFecha && (
+              <>
+                <div 
+                  className={styles.dropdownOverlay} 
+                  onClick={() => setMostrarDropdownFecha(false)}
+                />
+                <div className={styles.dropdownFecha}>
+                  <div className={styles.dropdownFechaContent}>
+                    <div className={styles.dropdownFechaField}>
+                      <label>Desde</label>
+                      <input
+                        type="date"
+                        value={fechaTemporal.desde}
+                        onChange={(e) => setFechaTemporal({ ...fechaTemporal, desde: e.target.value })}
+                        className={styles.dropdownDateInput}
+                      />
+                    </div>
+                    <div className={styles.dropdownFechaField}>
+                      <label>Hasta</label>
+                      <input
+                        type="date"
+                        value={fechaTemporal.hasta}
+                        onChange={(e) => setFechaTemporal({ ...fechaTemporal, hasta: e.target.value })}
+                        className={styles.dropdownDateInput}
+                      />
+                    </div>
+                    <button onClick={aplicarFechaPersonalizada} className="btn-tesla outline-subtle-primary sm">
+                      Aplicar
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Botón recargar - Separado */}
+          {tabActivo !== 'rentabilidad' && (
+            <button 
+              onClick={tabActivo === 'resumen' ? cargarDashboard : pagination.reset} 
+              className={styles.btnRecargar}
+              disabled={pagination.loading}
+              title="Recargar"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+            </button>
+          )}
         </div>
 
         <div className={styles.filtros}>
-          <div className={styles.filtroFecha}>
-            <label>Desde:</label>
-            <input
-              type="date"
-              value={fechaDesde}
-              onChange={(e) => updateFilters({ fecha_desde: e.target.value })}
-              className={styles.dateInput}
-            />
-          </div>
-          <div className={styles.filtroFecha}>
-            <label>Hasta:</label>
-            <input
-              type="date"
-              value={fechaHasta}
-              onChange={(e) => updateFilters({ fecha_hasta: e.target.value })}
-              className={styles.dateInput}
-            />
-          </div>
-
           {tabActivo !== 'rentabilidad' && (
             <>
+              {/* Filtro de MARCAS: selector múltiple */}
               <div className={styles.filtroSelect}>
-                <label>Marca:</label>
-                <select
-                  value={marcaSeleccionada}
-                  onChange={(e) => updateFilters({ marca: e.target.value })}
-                  className={styles.select}
-                >
-                  <option value="">Todas</option>
-                  {marcasDisponibles.map(marca => (
-                    <option key={marca} value={marca}>{marca}</option>
-                  ))}
-                </select>
+                <label>MARCAS:</label>
+                <div className={styles.multiSelect}>
+                  <div className={styles.multiSelectHeader}>
+                    <span className={styles.multiSelectLabel}>
+                      {marcasSeleccionadas.length === 0 
+                        ? 'Todas las marcas' 
+                        : `${marcasSeleccionadas.length} marca${marcasSeleccionadas.length > 1 ? 's' : ''} seleccionada${marcasSeleccionadas.length > 1 ? 's' : ''}`}
+                    </span>
+                  </div>
+                  <div className={styles.multiSelectDropdown}>
+                    {marcasSeleccionadas.length > 0 && (
+                      <div className={styles.multiSelectActions}>
+                        <button 
+                          type="button" 
+                          onClick={limpiarMarcas}
+                          className={styles.btnMultiSelectAction}
+                        >
+                          ✗ Limpiar selección
+                        </button>
+                      </div>
+                    )}
+                    <div className={styles.multiSelectSearch}>
+                      <input
+                        type="text"
+                        placeholder="Buscar marca..."
+                        value={busquedaMarca}
+                        onChange={(e) => setBusquedaMarca(e.target.value)}
+                        className={styles.multiSelectSearchInput}
+                      />
+                    </div>
+                    <div className={styles.multiSelectOptions}>
+                      {marcasDisponibles
+                        .filter(marca => marca.toLowerCase().includes(busquedaMarca.toLowerCase()))
+                        .map(marca => (
+                          <label key={marca} className={styles.multiSelectOption}>
+                            <input
+                              type="checkbox"
+                              checked={marcasSeleccionadas.includes(marca)}
+                              onChange={() => toggleMarca(marca)}
+                            />
+                            <span>{marca}</span>
+                          </label>
+                        ))}
+                    </div>
+                  </div>
+                </div>
               </div>
 
+              {/* Filtro de CATEGORÍAS: selector múltiple */}
               <div className={styles.filtroSelect}>
-                <label>Categoría:</label>
-                <select
-                  value={categoriaSeleccionada}
-                  onChange={(e) => updateFilters({ categoria: e.target.value })}
-                  className={styles.select}
-                >
-                  <option value="">Todas</option>
-                  {categoriasDisponibles.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
+                <label>CATEGORÍAS:</label>
+                <div className={styles.multiSelect}>
+                  <div className={styles.multiSelectHeader}>
+                    <span className={styles.multiSelectLabel}>
+                      {categoriasSeleccionadas.length === 0 
+                        ? 'Todas las categorías' 
+                        : `${categoriasSeleccionadas.length} categoría${categoriasSeleccionadas.length > 1 ? 's' : ''} seleccionada${categoriasSeleccionadas.length > 1 ? 's' : ''}`}
+                    </span>
+                  </div>
+                  <div className={styles.multiSelectDropdown}>
+                    {categoriasSeleccionadas.length > 0 && (
+                      <div className={styles.multiSelectActions}>
+                        <button 
+                          type="button" 
+                          onClick={limpiarCategorias}
+                          className={styles.btnMultiSelectAction}
+                        >
+                          ✗ Limpiar selección
+                        </button>
+                      </div>
+                    )}
+                    <div className={styles.multiSelectSearch}>
+                      <input
+                        type="text"
+                        placeholder="Buscar categoría..."
+                        value={busquedaCategoria}
+                        onChange={(e) => setBusquedaCategoria(e.target.value)}
+                        className={styles.multiSelectSearchInput}
+                      />
+                    </div>
+                    <div className={styles.multiSelectOptions}>
+                      {categoriasDisponibles
+                        .filter(cat => cat.toLowerCase().includes(busquedaCategoria.toLowerCase()))
+                        .map(cat => (
+                          <label key={cat} className={styles.multiSelectOption}>
+                            <input
+                              type="checkbox"
+                              checked={categoriasSeleccionadas.includes(cat)}
+                              onChange={() => toggleCategoria(cat)}
+                            />
+                            <span>{cat}</span>
+                          </label>
+                        ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-
-              <button 
-                onClick={tabActivo === 'resumen' ? cargarDashboard : pagination.reset} 
-                className={styles.btnRecargar}
-                disabled={pagination.loading}
-              >
-                🔄 Recargar
-              </button>
             </>
           )}
 
-          {/* Filtro de Tienda Oficial: visible en todas las tabs */}
+          {/* Filtro de TIENDAS OFICIALES: selector múltiple (visible en todas las tabs) */}
           <div className={styles.filtroSelect}>
-            <label>🏪 Tienda Oficial:</label>
-            <select
-              value={tiendaOficialSeleccionada}
-              onChange={(e) => updateFilters({ tienda_oficial: e.target.value })}
-              className={styles.select}
-            >
-              <option value="">Todas</option>
-              <option value="57997">🏢 Gauss</option>
-              <option value="2645">📡 TP-Link</option>
-              <option value="144" title="Forza, Verbatim">⚡ Forza/Verbatim</option>
-              <option value="191942" title="Epson, Forza, Logitech, MGN, Razer">🎯 Multi-marca</option>
-            </select>
+            <label>TIENDAS OFICIALES:</label>
+            <div className={styles.multiSelect}>
+              <div className={styles.multiSelectHeader}>
+                <span className={styles.multiSelectLabel}>
+                  {tiendasOficialesSeleccionadas.length === 0 
+                    ? 'Todas las tiendas' 
+                    : `${tiendasOficialesSeleccionadas.length} tienda${tiendasOficialesSeleccionadas.length > 1 ? 's' : ''} seleccionada${tiendasOficialesSeleccionadas.length > 1 ? 's' : ''}`}
+                </span>
+              </div>
+              <div className={styles.multiSelectDropdown}>
+                {tiendasOficialesSeleccionadas.length > 0 && (
+                  <div className={styles.multiSelectActions}>
+                    <button 
+                      type="button" 
+                      onClick={limpiarTiendasOficiales}
+                      className={styles.btnMultiSelectAction}
+                    >
+                      ✗ Limpiar selección
+                    </button>
+                  </div>
+                )}
+                <div className={styles.multiSelectOptions}>
+                  <label className={styles.multiSelectOption}>
+                    <input
+                      type="checkbox"
+                      checked={tiendasOficialesSeleccionadas.includes('57997')}
+                      onChange={() => toggleTiendaOficial('57997')}
+                    />
+                    <span>Gauss</span>
+                  </label>
+                  <label className={styles.multiSelectOption}>
+                    <input
+                      type="checkbox"
+                      checked={tiendasOficialesSeleccionadas.includes('2645')}
+                      onChange={() => toggleTiendaOficial('2645')}
+                    />
+                    <span>TP-Link</span>
+                  </label>
+                  <label className={styles.multiSelectOption}>
+                    <input
+                      type="checkbox"
+                      checked={tiendasOficialesSeleccionadas.includes('144')}
+                      onChange={() => toggleTiendaOficial('144')}
+                    />
+                    <span>Forza/Verbatim</span>
+                  </label>
+                  <label className={styles.multiSelectOption}>
+                    <input
+                      type="checkbox"
+                      checked={tiendasOficialesSeleccionadas.includes('191942')}
+                      onChange={() => toggleTiendaOficial('191942')}
+                    />
+                    <span>Multi-marca</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Filtro de PMs: selector múltiple */}
+          <div className={styles.filtroSelect}>
+            <label>PRODUCT MANAGERS:</label>
+            <div className={styles.multiSelect}>
+              <div className={styles.multiSelectHeader}>
+                <span className={styles.multiSelectLabel}>
+                  {pmsSeleccionados.length === 0 
+                    ? 'Todos los PMs' 
+                    : `${pmsSeleccionados.length} PM${pmsSeleccionados.length > 1 ? 's' : ''} seleccionado${pmsSeleccionados.length > 1 ? 's' : ''}`}
+                </span>
+              </div>
+              <div className={styles.multiSelectDropdown}>
+                {pmsSeleccionados.length > 0 && (
+                  <div className={styles.multiSelectActions}>
+                    <button 
+                      type="button" 
+                      onClick={limpiarPMs}
+                      className={styles.btnMultiSelectAction}
+                    >
+                      ✗ Limpiar selección
+                    </button>
+                  </div>
+                )}
+                <div className={styles.multiSelectOptions}>
+                  {pms.map(pm => (
+                    <label key={pm.id} className={styles.multiSelectOption}>
+                      <input
+                        type="checkbox"
+                        checked={pmsSeleccionados.includes(pm.id)}
+                        onChange={() => togglePM(pm.id)}
+                      />
+                      <span>{pm.nombre} {pm.apellido}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -391,6 +799,14 @@ export default function DashboardMetricasML() {
             <div className={styles.resultadosCount}>
               {operacionesFiltradas.length} operación{operacionesFiltradas.length !== 1 ? 'es' : ''}
             </div>
+            <button
+              onClick={() => exportarOperaciones()}
+              className="btn-tesla outline-subtle-success sm"
+              style={{ marginLeft: '12px' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2z"/></svg>
+              Exportar
+            </button>
           </div>
 
           <div 
@@ -416,6 +832,7 @@ export default function DashboardMetricasML() {
                   <th>Comisión $</th>
                   <th>Envío s/IVA</th>
                   <th>Limpio</th>
+                  <th>Offset Flex</th>
                   <th>Markup%</th>
                   <th>Lista</th>
                 </tr>
@@ -438,6 +855,9 @@ export default function DashboardMetricasML() {
                     <td className={styles.monto}>{formatearMoneda(op.comision_pesos)}</td>
                     <td className={styles.monto}>{formatearMoneda(op.costo_envio)}</td>
                     <td className={styles.monto}>{formatearMoneda(op.monto_limpio)}</td>
+                    <td className={styles.offsetFlex}>
+                      {parseFloat(op.offset_flex || 0) > 0 ? formatearMoneda(op.offset_flex) : '—'}
+                    </td>
                     <td className={`${styles.centrado} ${parseFloat(op.markup_porcentaje) < 0 ? styles.negativo : ''}`}>
                       {formatearPorcentaje(op.markup_porcentaje)}
                     </td>
@@ -467,19 +887,25 @@ export default function DashboardMetricasML() {
         <TabRentabilidad 
           fechaDesde={fechaDesde} 
           fechaHasta={fechaHasta}
-          tiendaOficial={tiendaOficialSeleccionada}
+          tiendasOficiales={tiendasOficialesSeleccionadas}
+          pmsSeleccionados={pmsSeleccionados}
+          marcasSeleccionadas={marcasSeleccionadas}
+          categoriasSeleccionadas={categoriasSeleccionadas}
         />
       ) : metricasGenerales ? (
         /* Tab de Resumen (incluye tienda-oficial con filtro) */
         <>
-          {/* Banner informativo si hay tienda oficial seleccionada */}
-          {tiendaOficialSeleccionada && (
+          {/* Banner informativo si hay tiendas oficiales seleccionadas */}
+          {tiendasOficialesSeleccionadas.length > 0 && (
             <div className={styles.bannerTiendaOficial}>
-              🏪 Mostrando solo operaciones de: <strong>
-                {tiendaOficialSeleccionada === '57997' && 'Tienda Oficial Gauss'}
-                {tiendaOficialSeleccionada === '2645' && 'Tienda Oficial TP-Link'}
-                {tiendaOficialSeleccionada === '144' && 'Tienda Oficial Forza/Verbatim'}
-                {tiendaOficialSeleccionada === '191942' && 'Tienda Oficial Multi-marca'}
+              🏪 Filtrando por: <strong>
+                {tiendasOficialesSeleccionadas.map(id => {
+                  if (id === '57997') return 'Gauss';
+                  if (id === '2645') return 'TP-Link';
+                  if (id === '144') return 'Forza/Verbatim';
+                  if (id === '191942') return 'Multi-marca';
+                  return id;
+                }).join(', ')}
               </strong>
             </div>
           )}
@@ -562,6 +988,26 @@ export default function DashboardMetricasML() {
                 {formatearPorcentaje((metricasGenerales.total_envios / (metricasGenerales.total_ventas_ml || 1)) * 100)}
               </span>
             </div>
+            {parseFloat(metricasGenerales.total_offset_flex || 0) > 0 && (() => {
+              const offsetFlex = parseFloat(metricasGenerales.total_offset_flex);
+              const ganancia = parseFloat(metricasGenerales.total_ganancia || 0);
+              const costo = parseFloat(metricasGenerales.total_costo || 0);
+              const markupActual = parseFloat(metricasGenerales.markup_porcentaje || 0);
+              const markupConFlex = costo > 0 ? ((ganancia + offsetFlex) / costo) * 100 : 0;
+              const varianza = markupConFlex - markupActual;
+              return (
+                <div className={styles.metricMini}>
+                  <span className={styles.metricMiniLabel}>Offset Flex</span>
+                  <span className={`${styles.metricMiniValue} ${styles.offsetFlexValue}`}>
+                    {formatearMoneda(offsetFlex)}
+                  </span>
+                  <span className={styles.metricMiniPercent} style={{ color: '#d97706' }}>
+                    {formatearPorcentaje(markupConFlex)} mkp
+                    <span className={styles.offsetFlexVarianza}> +{varianza.toFixed(2)}%</span>
+                  </span>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Gráfico de barras - Ventas por día */}
@@ -694,6 +1140,9 @@ export default function DashboardMetricasML() {
                       <div className={styles.logisticaMeta}>
                         <span>{item.cantidad_operaciones} ops</span>
                         <span className={styles.logisticaEnvio}>Envío: {formatearMoneda(item.total_envios)}</span>
+                        {parseFloat(item.total_offset_flex || 0) > 0 && (
+                          <span className={styles.logisticaOffset}>Offset: {formatearMoneda(item.total_offset_flex)}</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -740,6 +1189,13 @@ export default function DashboardMetricasML() {
         </>
       ) : (
         <div className={styles.noData}>No hay datos disponibles</div>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`toast-notification ${toast.type}`}>
+          {toast.message}
+        </div>
       )}
     </div>
   );

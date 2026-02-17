@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import styles from './ExportModal.module.css';
 import { usePermisos } from '../contexts/PermisosContext';
-
-const API_URL = import.meta.env.VITE_API_URL;
 
 export default function ExportModal({ onClose, filtrosActivos, showToast, esTienda = false }) {
   const { tienePermiso } = usePermisos();
@@ -215,10 +213,7 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
   useEffect(() => {
     const cargarDolarVenta = async () => {
       try {
-        const token = localStorage.getItem('token');
-        const response = await axios.get(`${API_URL}/tipo-cambio/actual`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const response = await api.get('/tipo-cambio/actual');
         setDolarVenta(response.data.venta);
       } catch (error) {
         console.error('Error cargando dólar venta:', error);
@@ -235,8 +230,6 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
   const exportarVistaActual = async () => {
     setExportando(true);
     try {
-      const token = localStorage.getItem('token');
-
       let params = `page=1&page_size=10000`;
 
       if (aplicarFiltros) {
@@ -280,10 +273,8 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
         if (filtrosActivos.filtroTiendaOficial) params += `&tienda_oficial=${filtrosActivos.filtroTiendaOficial}`;
       }
 
-      const url = `${API_URL}/exportar-vista-actual?${params}`;
-      const response = await axios.get(url, {
-        responseType: 'blob',
-        headers: { Authorization: `Bearer ${token}` }
+      const response = await api.get(`/exportar-vista-actual?${params}`, {
+        responseType: 'blob'
       });
 
       const blob = new Blob([response.data], {
@@ -298,11 +289,11 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
       document.body.appendChild(link);
       link.click();
       link.remove();
-      showToast('✅ Exportación completada');
+      showToast('Exportación completada');
       onClose();
     } catch (error) {
       console.error('Error exportando:', error);
-      showToast('❌ Error al exportar Vista Actual', 'error');
+      showToast('Error al exportar Vista Actual', 'error');
     } finally {
       setExportando(false);
     }
@@ -311,7 +302,6 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
   const exportarRebate = async () => {
     setExportando(true);
     try {
-      const token = localStorage.getItem('token');
       const body = {
         fecha_desde: convertirFechaParaAPI(fechaDesde),
         fecha_hasta: convertirFechaParaAPI(fechaHasta)
@@ -328,14 +318,9 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
         body.filtros = agregarFiltrosAvanzados(body.filtros);
       }
 
-      const response = await axios.post(
-        `${API_URL}/productos/exportar-rebate`,
-        body,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          responseType: 'blob'
-        }
-      );
+      const response = await api.post('/productos/exportar-rebate', body, {
+        responseType: 'blob'
+      });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -346,11 +331,11 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
       document.body.appendChild(link);
       link.click();
       link.remove();
-      showToast('✅ Exportación completada');
+      showToast('Exportación completada');
       onClose();
     } catch (error) {
       console.error('Error exportando:', error);
-      showToast('❌ Error al exportar', 'error');
+      showToast('Error al exportar', 'error');
     } finally {
       setExportando(false);
     }
@@ -359,7 +344,6 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
   const exportarClasica = async () => {
     setExportando(true);
     try {
-      const token = localStorage.getItem('token');
       let params = `porcentaje_adicional=${parseFloat(porcentajeClasica.toString().replace(',', '.')) || 0}&tipo_cuotas=${tipoCuotas}`;
 
       // Agregar currency_id y offset_dolar
@@ -409,13 +393,9 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
         if (filtrosActivos.filtroTiendaOficial) params += `&tienda_oficial=${filtrosActivos.filtroTiendaOficial}`;
       }
 
-      const response = await axios.get(
-        `${API_URL}/exportar-clasica?${params}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          responseType: 'blob'
-        }
-      );
+      const response = await api.get(`/exportar-clasica?${params}`, {
+        responseType: 'blob'
+      });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -434,11 +414,11 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
       document.body.appendChild(link);
       link.click();
       link.remove();
-      showToast('✅ Exportación completada');
+      showToast('Exportación completada');
       onClose();
     } catch (error) {
       console.error('Error exportando:', error);
-      showToast('❌ Error al exportar Clásica', 'error');
+      showToast('Error al exportar Clásica', 'error');
     } finally {
       setExportando(false);
     }
@@ -447,7 +427,6 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
   const exportarListaGremio = async () => {
     setExportando(true);
     try {
-      const token = localStorage.getItem('token');
       let params = `con_precio_gremio=true`;
 
       // Agregar moneda y offset
@@ -467,13 +446,9 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
         if (filtrosActivos.coloresSeleccionados?.length > 0) params += `&colores=${filtrosActivos.coloresSeleccionados.join(',')}`;
       }
 
-      const response = await axios.get(
-        `${API_URL}/exportar-lista-gremio?${params}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          responseType: 'blob'
-        }
-      );
+      const response = await api.get(`/exportar-lista-gremio?${params}`, {
+        responseType: 'blob'
+      });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -485,11 +460,11 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
       document.body.appendChild(link);
       link.click();
       link.remove();
-      showToast('✅ Exportación completada');
+      showToast('Exportación completada');
       onClose();
     } catch (error) {
       console.error('Error exportando:', error);
-      showToast('❌ Error al exportar Lista Gremio', 'error');
+      showToast('Error al exportar Lista Gremio', 'error');
     } finally {
       setExportando(false);
     }
@@ -498,7 +473,6 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
   const exportarWebTransf = async () => {
     setExportando(true);
     try {
-      const token = localStorage.getItem('token');
       let params = `porcentaje_adicional=${parseFloat(porcentajeWebTransf.toString().replace(',', '.')) || 0}`;
 
       // Agregar currency_id y offset_dolar
@@ -548,13 +522,9 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
         if (filtrosActivos.filtroTiendaOficial) params += `&tienda_oficial=${filtrosActivos.filtroTiendaOficial}`;
       }
 
-      const response = await axios.get(
-        `${API_URL}/exportar-web-transferencia?${params}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          responseType: 'blob'
-        }
-      );
+      const response = await api.get(`/exportar-web-transferencia?${params}`, {
+        responseType: 'blob'
+      });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -565,11 +535,11 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
       document.body.appendChild(link);
       link.click();
       link.remove();
-      showToast('✅ Exportación completada');
+      showToast('Exportación completada');
       onClose();
     } catch (error) {
       console.error('Error exportando:', error);
-      showToast('❌ Error al exportar Web Transferencia', 'error');
+      showToast('Error al exportar Web Transferencia', 'error');
     } finally {
       setExportando(false);
     }
@@ -578,7 +548,6 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
   const exportarPVP = async () => {
     setExportando(true);
     try {
-      const token = localStorage.getItem('token');
       let params = `porcentaje_adicional=${parseFloat(porcentajePVP.toString().replace(',', '.')) || 0}&tipo_cuotas=${tipoCuotasPVP}`;
 
       // Agregar currency_id y offset_dolar
@@ -628,13 +597,9 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
         if (filtrosActivos.filtroTiendaOficial) params += `&tienda_oficial=${filtrosActivos.filtroTiendaOficial}`;
       }
 
-      const response = await axios.get(
-        `${API_URL}/exportar-clasica?${params}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          responseType: 'blob'
-        }
-      );
+      const response = await api.get(`/exportar-clasica?${params}`, {
+        responseType: 'blob'
+      });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -653,11 +618,11 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
       document.body.appendChild(link);
       link.click();
       link.remove();
-      showToast('✅ Exportación completada');
+      showToast('Exportación completada');
       onClose();
     } catch (error) {
       console.error('Error exportando:', error);
-      showToast('❌ Error al exportar PVP', 'error');
+      showToast('Error al exportar PVP', 'error');
     } finally {
       setExportando(false);
     }
@@ -667,7 +632,7 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
     <div className={styles.overlay}>
       <div className={styles.modal}>
         <div className={styles.header}>
-          <h2 className={styles.title}>📊 Exportar Precios</h2>
+          <h2 className={styles.title}>Exportar Precios</h2>
           <button onClick={onClose} className={styles.closeButton}>×</button>
         </div>
 
@@ -753,11 +718,11 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
               </p>
 
               <div className={styles.buttonGroup}>
-                <button onClick={onClose} disabled={exportando} className={`${styles.button} ${styles.buttonSecondary}`}>
+                <button onClick={onClose} disabled={exportando} className="btn-tesla ghost">
                   Cancelar
                 </button>
-                <button onClick={exportarVistaActual} disabled={exportando} className={`${styles.button} ${styles.buttonPrimary}`}>
-                  {exportando ? '⏳ Exportando...' : '📥 Exportar Vista Actual'}
+                <button onClick={exportarVistaActual} disabled={exportando} className="btn-tesla outline-subtle-success">
+                  {exportando ? 'Exportando...' : 'Exportar Vista Actual'}
                 </button>
               </div>
             </div>
@@ -828,11 +793,11 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
               )}
 
               <div className={styles.buttonGroup}>
-                <button onClick={onClose} disabled={exportando} className={`${styles.button} ${styles.buttonSecondary}`}>
+                <button onClick={onClose} disabled={exportando} className="btn-tesla ghost">
                   Cancelar
                 </button>
-                <button onClick={exportarListaGremio} disabled={exportando} className={`${styles.button} ${styles.buttonPrimary}`}>
-                  {exportando ? '⏳ Exportando...' : '📥 Exportar Lista Gremio'}
+                <button onClick={exportarListaGremio} disabled={exportando} className="btn-tesla outline-subtle-success">
+                  {exportando ? 'Exportando...' : 'Exportar Lista Gremio'}
                 </button>
               </div>
             </div>
@@ -880,11 +845,11 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
               </div>
 
               <div className={styles.buttonGroup}>
-                <button onClick={onClose} disabled={exportando} className={`${styles.button} ${styles.buttonSecondary}`}>
+                <button onClick={onClose} disabled={exportando} className="btn-tesla ghost">
                   Cancelar
                 </button>
-                <button onClick={exportarRebate} disabled={exportando} className={`${styles.button} ${styles.buttonPrimary}`}>
-                  {exportando ? '⏳ Exportando...' : '📥 Exportar Rebate'}
+                <button onClick={exportarRebate} disabled={exportando} className="btn-tesla outline-subtle-success">
+                  {exportando ? 'Exportando...' : 'Exportar Rebate'}
                 </button>
               </div>
             </div>
@@ -984,11 +949,11 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
               </div>
 
               <div className={styles.buttonGroup}>
-                <button onClick={onClose} disabled={exportando} className={`${styles.button} ${styles.buttonSecondary}`}>
+                <button onClick={onClose} disabled={exportando} className="btn-tesla ghost">
                   Cancelar
                 </button>
-                <button onClick={exportarWebTransf} disabled={exportando} className={`${styles.button} ${styles.buttonPrimary}`}>
-                  {exportando ? '⏳ Exportando...' : '📥 Exportar Excel'}
+                <button onClick={exportarWebTransf} disabled={exportando} className="btn-tesla outline-subtle-success">
+                  {exportando ? 'Exportando...' : 'Exportar Excel'}
                 </button>
               </div>
             </div>
@@ -1101,11 +1066,11 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
               </div>
 
               <div className={styles.buttonGroup}>
-                <button onClick={onClose} disabled={exportando} className={`${styles.button} ${styles.buttonSecondary}`}>
+                <button onClick={onClose} disabled={exportando} className="btn-tesla ghost">
                   Cancelar
                 </button>
-                <button onClick={exportarClasica} disabled={exportando} className={`${styles.button} ${styles.buttonPrimary}`}>
-                  {exportando ? '⏳ Exportando...' : '📥 Exportar Excel'}
+                <button onClick={exportarClasica} disabled={exportando} className="btn-tesla outline-subtle-success">
+                  {exportando ? 'Exportando...' : 'Exportar Excel'}
                 </button>
               </div>
             </div>
@@ -1216,11 +1181,11 @@ export default function ExportModal({ onClose, filtrosActivos, showToast, esTien
               </div>
 
               <div className={styles.buttonGroup}>
-                <button onClick={onClose} disabled={exportando} className={`${styles.button} ${styles.buttonSecondary}`}>
+                <button onClick={onClose} disabled={exportando} className="btn-tesla ghost">
                   Cancelar
                 </button>
-                <button onClick={exportarPVP} disabled={exportando} className={`${styles.button} ${styles.buttonPrimary}`}>
-                  {exportando ? '⏳ Exportando...' : '📥 Exportar PVP'}
+                <button onClick={exportarPVP} disabled={exportando} className="btn-tesla outline-subtle-success">
+                  {exportando ? 'Exportando...' : 'Exportar PVP'}
                 </button>
               </div>
             </div>

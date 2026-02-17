@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { usePermisos } from '../contexts/PermisosContext';
 import SidebarSection from './SidebarSection';
-import { Package, ClipboardList, BarChart3, Settings, PanelLeftClose, PanelLeft, ChevronsDown, ChevronsUp } from 'lucide-react';
+import { Package, ClipboardList, BarChart3, Settings, PanelLeftClose, PanelLeft, ChevronsDown, ChevronsUp, X } from 'lucide-react';
 import styles from './Sidebar.module.css';
 
-export default function Sidebar() {
+export default function Sidebar({ mobileOpen = false, onMobileClose }) {
   // Estado persistido: true = expandido fijo, false = colapsado
   const [isPinned, setIsPinned] = useState(() => {
     const saved = localStorage.getItem('sidebarPinned');
@@ -23,7 +23,13 @@ export default function Sidebar() {
 
   // Persiste el estado de pin
   useEffect(() => {
-    localStorage.setItem('sidebarPinned', isPinned);
+    const value = isPinned.toString();
+    localStorage.setItem('sidebarPinned', value);
+    
+    // Disparar custom event para sincronizar AppLayout en la misma tab
+    window.dispatchEvent(new CustomEvent('sidebarChange', {
+      detail: { key: 'sidebarPinned', value }
+    }));
   }, [isPinned]);
 
   const togglePin = () => {
@@ -78,12 +84,12 @@ export default function Sidebar() {
       icon: BarChart3,
       defaultOpen: false,
       items: [
-        { label: 'Dashboard Ventas', path: '/dashboard-ventas', permiso: 'ventas_ml.ver_dashboard,ventas_fuera.ver_dashboard,ventas_tn.ver_dashboard', multiple: true },
         { label: 'Métricas ML', path: '/dashboard-metricas-ml', permiso: 'ventas_ml.ver_dashboard' },
         { label: 'Ventas por Fuera', path: '/dashboard-ventas-fuera', permiso: 'ventas_fuera.ver_dashboard' },
         { label: 'Tienda Nube', path: '/dashboard-tienda-nube', permiso: 'ventas_tn.ver_dashboard' },
         { label: 'Cálculos', path: '/calculos', permiso: 'reportes.ver_calculadora' },
         { label: 'Últimos Cambios', path: '/ultimos-cambios', permiso: 'productos.ver_auditoria' },
+        { label: 'Cuentas Corrientes', path: '/cuentas-corrientes', permiso: 'reportes.ver_cuentas_corrientes' },
       ],
     },
     {
@@ -94,18 +100,39 @@ export default function Sidebar() {
       items: [
         { label: 'Gestión PMs', path: '/gestion-pm', permiso: 'admin.gestionar_pms' },
         { label: 'Admin', path: '/admin', permiso: 'admin.ver_panel' },
+        { label: 'Alertas', path: '/gestion/alertas', permiso: 'alertas.gestionar' },
       ],
     },
   ];
 
   return (
-    <aside
-      className={styles.sidebar}
-      data-pinned={isPinned}
-      data-expanded={isExpanded}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
+    <>
+      {/* Overlay para cerrar sidebar en mobile */}
+      {mobileOpen && (
+        <div 
+          className={styles.overlay} 
+          onClick={onMobileClose}
+          aria-hidden="true"
+        />
+      )}
+      
+      <aside
+        className={styles.sidebar}
+        data-pinned={isPinned}
+        data-expanded={isExpanded}
+        data-mobile-open={mobileOpen}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+      {/* Close button - Solo mobile */}
+      <button
+        onClick={onMobileClose}
+        className={styles.mobileCloseBtn}
+        aria-label="Cerrar menú"
+      >
+        <X size={20} />
+      </button>
+
       {/* Expand/Collapse All - Arriba */}
       {isExpanded && (
         <button
@@ -144,6 +171,7 @@ export default function Sidebar() {
               isExpanded={isExpanded}
               currentPath={location.pathname}
               forceOpen={expandAll}
+              onItemClick={onMobileClose}
             />
           );
         })}
@@ -155,11 +183,11 @@ export default function Sidebar() {
         className={styles.toggleBtn}
         aria-label={isPinned ? 'Colapsar sidebar' : 'Expandir sidebar'}
         title={isPinned ? 'Colapsar sidebar' : 'Expandir sidebar'}
+        data-flipped={!isPinned}
       >
-        <span style={{ transform: isPinned ? 'none' : 'scaleX(-1)', display: 'flex' }}>
-          <PanelLeftClose size={20} />
-        </span>
+        <PanelLeftClose size={20} />
       </button>
     </aside>
+    </>
   );
 }

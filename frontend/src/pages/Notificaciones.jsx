@@ -1,21 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../services/api';
 import styles from './Notificaciones.module.css';
-
-const API_URL = import.meta.env.VITE_API_URL;
-
-const api = axios.create({
-  baseURL: `${API_URL}`,
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
 export default function Notificaciones() {
   const [notificaciones, setNotificaciones] = useState([]);
@@ -28,8 +13,7 @@ export default function Notificaciones() {
   const [soloNoLeidas, setSoloNoLeidas] = useState(false);
   const [paginaActual, setPaginaActual] = useState(0);
   const [expandedNotif, setExpandedNotif] = useState(null);
-  const [orderData, setOrderData] = useState({});
-  const [loadingOrder, setLoadingOrder] = useState({});
+
   const [preciosSeteados, setPreciosSeteados] = useState({});
   const [vistaAgrupada, setVistaAgrupada] = useState(true);
   const [expandedGrupo, setExpandedGrupo] = useState(null);
@@ -155,7 +139,7 @@ export default function Notificaciones() {
   
   const descartarNotificacion = async (notifId) => {
     try {
-      const response = await api.patch(`/notificaciones/${notifId}/descartar`);
+      await api.patch(`/notificaciones/${notifId}/descartar`);
       
       // Mostrar mensaje informativo al usuario
       alert('✓ Notificación descartada.\n\n' +
@@ -271,22 +255,6 @@ export default function Notificaciones() {
     return badges[estado] || badges['PENDIENTE'];
   };
 
-  const fetchOrderData = async (notif) => {
-    if (!notif.id_operacion) return;
-
-    try {
-      setLoadingOrder({ ...loadingOrder, [notif.id]: true });
-      const response = await axios.get(
-        `https://ml-webhook.gaussonline.com.ar/api/ml/render?resource=%2Forders%2F${notif.id_operacion}&format=json`
-      );
-      setOrderData({ ...orderData, [notif.id]: response.data });
-    } catch (error) {
-      console.error('Error al obtener datos de orden:', error);
-    } finally {
-      setLoadingOrder({ ...loadingOrder, [notif.id]: false });
-    }
-  };
-
   const fetchPrecioSeteado = async (notif) => {
     if (!notif.item_id || preciosSeteados[notif.id]) return;
 
@@ -379,17 +347,19 @@ export default function Notificaciones() {
     const bMarkup = vistaAgrupada ? b.markup_real : b.markup_real;
 
     switch (ordenamiento) {
-      case 'severidad_desc':
+      case 'severidad_desc': {
         // Urgente → Info, luego más recientes
         const sevDiffDesc = getSeveridadValue(bSev) - getSeveridadValue(aSev);
         if (sevDiffDesc !== 0) return sevDiffDesc;
         return new Date(bFecha) - new Date(aFecha);
+      }
       
-      case 'severidad_asc':
+      case 'severidad_asc': {
         // Info → Urgente, luego más recientes
         const sevDiffAsc = getSeveridadValue(aSev) - getSeveridadValue(bSev);
         if (sevDiffAsc !== 0) return sevDiffAsc;
         return new Date(bFecha) - new Date(aFecha);
+      }
       
       case 'fecha_desc':
         return new Date(bFecha) - new Date(aFecha);
@@ -713,7 +683,7 @@ export default function Notificaciones() {
                         {grupo.notificacion_reciente.ml_id && (
                           <button
                             onClick={() => abrirEnML(grupo.notificacion_reciente)}
-                            className="btn-tesla primary sm"
+                            className="btn-tesla outline-subtle-primary sm"
                           >
                             🔗 Ver última en ML
                           </button>

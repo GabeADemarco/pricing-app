@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { Pencil } from 'lucide-react';
+import api from '../services/api';
 import './PanelConstantesPricing.css';
 import { useModalClickOutside } from '../hooks/useModalClickOutside';
 
-const API_URL = import.meta.env.VITE_API_URL;
-
 export default function PanelConstantesPricing() {
-  const modalNuevaVersion = useModalClickOutside(() => setMostrarFormNuevaVersion(false));
+  const modalNuevaVersion = useModalClickOutside(() => { setMostrarFormNuevaVersion(false); setEditandoId(null); });
   const [constanteActual, setConstanteActual] = useState(null);
   const [versiones, setVersiones] = useState([]);
   const [mostrarFormNuevaVersion, setMostrarFormNuevaVersion] = useState(false);
   const [cargando, setCargando] = useState(false);
+
+  // null = creando nueva versión, número = editando versión existente
+  const [editandoId, setEditandoId] = useState(null);
 
   // Estado para nueva versión
   const [nuevaVersion, setNuevaVersion] = useState({
@@ -25,6 +27,7 @@ export default function PanelConstantesPricing() {
     markup_adicional_cuotas: 4.0,
     comision_tienda_nube: 1.0,
     comision_tienda_nube_tarjeta: 3.0,
+    offset_flex: '',
     fecha_desde: new Date().toISOString().split('T')[0]
   });
 
@@ -35,25 +38,15 @@ export default function PanelConstantesPricing() {
   const cargarDatos = async () => {
     setCargando(true);
     try {
-      const token = localStorage.getItem('token');
-      const headers = { Authorization: `Bearer ${token}` };
-
       // Cargar constantes actuales
-      const actual = await axios.get(
-        `${API_URL}/pricing-constants/actual`,
-        { headers }
-      );
+      const actual = await api.get('/pricing-constants/actual');
       setConstanteActual(actual.data);
 
       // Cargar todas las versiones
-      const todasVersiones = await axios.get(
-        `${API_URL}/pricing-constants`,
-        { headers }
-      );
+      const todasVersiones = await api.get('/pricing-constants');
       setVersiones(todasVersiones.data);
 
-    } catch (error) {
-      console.error('Error cargando constantes:', error);
+    } catch {
       alert('Error al cargar constantes de pricing');
     } finally {
       setCargando(false);
@@ -65,6 +58,7 @@ export default function PanelConstantesPricing() {
 
     setNuevaVersion({
       ...constanteActual,
+      offset_flex: constanteActual.offset_flex ?? '',
       fecha_desde: new Date().toISOString().split('T')[0]
     });
   };
@@ -77,20 +71,25 @@ export default function PanelConstantesPricing() {
 
     try {
       setCargando(true);
-      const token = localStorage.getItem('token');
 
-      await axios.post(
-        `${API_URL}/pricing-constants`,
-        nuevaVersion,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const payload = {
+        ...nuevaVersion,
+        offset_flex: nuevaVersion.offset_flex === '' ? null : nuevaVersion.offset_flex,
+      };
 
-      alert('Nueva versión de constantes creada correctamente');
+      if (editandoId) {
+        await api.put(`/pricing-constants/${editandoId}`, payload);
+        alert('Constantes actualizadas correctamente');
+      } else {
+        await api.post('/pricing-constants', payload);
+        alert('Nueva versión de constantes creada correctamente');
+      }
+
       setMostrarFormNuevaVersion(false);
+      setEditandoId(null);
       cargarDatos();
     } catch (error) {
-      console.error('Error guardando nueva versión:', error);
-      alert(error.response?.data?.detail || 'Error al guardar nueva versión');
+      alert(error?.response?.data?.detail || 'Error al guardar versión');
     } finally {
       setCargando(false);
     }
@@ -101,18 +100,13 @@ export default function PanelConstantesPricing() {
 
     try {
       setCargando(true);
-      const token = localStorage.getItem('token');
 
-      await axios.delete(
-        `${API_URL}/pricing-constants/${id}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await api.delete(`/pricing-constants/${id}`);
 
       alert('Versión eliminada correctamente');
       cargarDatos();
     } catch (error) {
-      console.error('Error eliminando versión:', error);
-      alert(error.response?.data?.detail || 'Error al eliminar versión');
+      alert(error?.response?.data?.detail || 'Error al eliminar versión');
     } finally {
       setCargando(false);
     }
@@ -131,16 +125,18 @@ export default function PanelConstantesPricing() {
             className="btn-secondary"
             onClick={() => {
               copiarDatosActuales();
+              setEditandoId(constanteActual?.id ?? null);
               setMostrarFormNuevaVersion(true);
             }}
             disabled={!constanteActual}
           >
-            ✏️ Editar Valores Actuales
+            <Pencil size={14} /> Editar Valores Actuales
           </button>
           <button
-            className="btn-primary"
+            className="btn-tesla outline-subtle-primary"
             onClick={() => {
               copiarDatosActuales();
+              setEditandoId(null);
               setMostrarFormNuevaVersion(true);
             }}
             disabled={!constanteActual}
@@ -193,6 +189,14 @@ export default function PanelConstantesPricing() {
             </div>
           </div>
 
+          <h4 style={{marginTop: '20px', marginBottom: '10px'}}>Otros Parámetros</h4>
+          <div className="constantes-grid">
+            <div className="constante-item">
+              <label>Offset Flex ($):</label>
+              <span>{constanteActual.offset_flex != null ? `$${Number(constanteActual.offset_flex).toLocaleString('es-AR')}` : 'Sin asignar'}</span>
+            </div>
+          </div>
+
           <h4 style={{marginTop: '20px', marginBottom: '10px'}}>Comisiones Tienda Nube</h4>
           <div className="constantes-grid">
             <div className="constante-item">
@@ -216,7 +220,7 @@ export default function PanelConstantesPricing() {
           onClick={modalNuevaVersion.handleOverlayClick}
         >
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <h3>Nueva Versión de Constantes</h3>
+            <h3>{editandoId ? 'Editar Constantes Vigentes' : 'Nueva Versión de Constantes'}</h3>
 
             <div className="form-constantes">
               <div className="form-group">
@@ -314,6 +318,16 @@ export default function PanelConstantesPricing() {
                     onChange={e => setNuevaVersion({...nuevaVersion, markup_adicional_cuotas: parseFloat(e.target.value)})}
                   />
                 </div>
+                <div className="form-group">
+                  <label>Offset Flex ($):</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={nuevaVersion.offset_flex}
+                    onChange={e => setNuevaVersion({...nuevaVersion, offset_flex: e.target.value === '' ? '' : parseFloat(e.target.value)})}
+                    placeholder="Sin asignar"
+                  />
+                </div>
               </div>
 
               <h4>Comisiones Tienda Nube</h4>
@@ -342,12 +356,12 @@ export default function PanelConstantesPricing() {
             <div className="modal-actions">
               <button
                 className="btn-secondary"
-                onClick={() => setMostrarFormNuevaVersion(false)}
+                onClick={() => { setMostrarFormNuevaVersion(false); setEditandoId(null); }}
               >
                 Cancelar
               </button>
               <button
-                className="btn-primary"
+                className="btn-tesla outline-subtle-primary"
                 onClick={handleGuardarNuevaVersion}
                 disabled={cargando}
               >
@@ -361,44 +375,81 @@ export default function PanelConstantesPricing() {
       {/* Historial de Versiones */}
       <div className="versiones-historial">
         <h3>Historial de Versiones</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Fecha Desde</th>
-              <th>Fecha Hasta</th>
-              <th>Tier 1</th>
-              <th>Tier 2</th>
-              <th>Tier 3</th>
-              <th>Varios %</th>
-              <th>Markup Cuotas %</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {versiones.map(version => (
-              <tr key={version.id}>
-                <td>{new Date(version.fecha_desde).toLocaleDateString('es-AR')}</td>
-                <td>{version.fecha_hasta ? new Date(version.fecha_hasta).toLocaleDateString('es-AR') : 'Vigente'}</td>
-                <td>${version.monto_tier1?.toLocaleString('es-AR')}</td>
-                <td>${version.monto_tier2?.toLocaleString('es-AR')}</td>
-                <td>${version.monto_tier3?.toLocaleString('es-AR')}</td>
-                <td>{version.varios_porcentaje}%</td>
-                <td>{version.markup_adicional_cuotas}%</td>
-                <td>
-                  {versiones.length > 1 && (
-                    <button
-                      className="btn-danger-small"
-                      onClick={() => handleEliminarVersion(version.id)}
-                      disabled={cargando}
-                    >
-                      Eliminar
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {versiones.map(version => (
+          <div key={version.id} className="version-card">
+            <div className="version-card-header">
+              <div className="version-fechas">
+                <span className="version-fecha-desde">
+                  Desde: {new Date(version.fecha_desde).toLocaleDateString('es-AR')}
+                </span>
+                <span className="version-fecha-hasta">
+                  Hasta: {version.fecha_hasta ? new Date(version.fecha_hasta).toLocaleDateString('es-AR') : <strong>Vigente</strong>}
+                </span>
+              </div>
+              {versiones.length > 1 && (
+                <button
+                  className="btn-tesla outline-subtle-danger sm"
+                  onClick={() => handleEliminarVersion(version.id)}
+                  disabled={cargando}
+                >
+                  Eliminar
+                </button>
+              )}
+            </div>
+            <div className="version-card-body">
+              <table className="version-detail-table">
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Tier 1</th>
+                    <th>Tier 2</th>
+                    <th>Tier 3 (envío gratis)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="version-row-label">Monto</td>
+                    <td>${version.monto_tier1?.toLocaleString('es-AR')}</td>
+                    <td>${version.monto_tier2?.toLocaleString('es-AR')}</td>
+                    <td>${version.monto_tier3?.toLocaleString('es-AR')}</td>
+                  </tr>
+                  <tr>
+                    <td className="version-row-label">Comisión</td>
+                    <td>${version.comision_tier1?.toLocaleString('es-AR')}</td>
+                    <td>${version.comision_tier2?.toLocaleString('es-AR')}</td>
+                    <td>${version.comision_tier3?.toLocaleString('es-AR')}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div className="version-params">
+                <div className="version-param">
+                  <span className="version-param-label">Varios</span>
+                  <span className="version-param-value">{version.varios_porcentaje}%</span>
+                </div>
+                <div className="version-param">
+                  <span className="version-param-label">Markup Cuotas</span>
+                  <span className="version-param-value">{version.markup_adicional_cuotas}%</span>
+                </div>
+                <div className="version-param">
+                  <span className="version-param-label">Grupo Comisión</span>
+                  <span className="version-param-value">{version.grupo_comision_default}</span>
+                </div>
+                <div className="version-param">
+                  <span className="version-param-label">Offset Flex</span>
+                  <span className="version-param-value">{version.offset_flex != null ? `$${Number(version.offset_flex).toLocaleString('es-AR')}` : '—'}</span>
+                </div>
+                <div className="version-param">
+                  <span className="version-param-label">TN Efectivo/Transf.</span>
+                  <span className="version-param-value">{version.comision_tienda_nube || 1.0}%</span>
+                </div>
+                <div className="version-param">
+                  <span className="version-param-label">TN Tarjeta</span>
+                  <span className="version-param-value">{version.comision_tienda_nube_tarjeta || 3.0}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

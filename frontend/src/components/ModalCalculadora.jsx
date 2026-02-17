@@ -1,9 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { useState, useEffect } from 'react';
+import api from '../services/api';
 import '../styles/ModalCalculadora.css';
 import { useModalClickOutside } from '../hooks/useModalClickOutside';
-
-const API_URL = import.meta.env.VITE_API_URL;
 
 const ModalCalculadora = ({ isOpen, onClose }) => {
   const { overlayRef, handleOverlayMouseDown, handleOverlayClick } = useModalClickOutside(onClose);
@@ -43,10 +41,7 @@ const ModalCalculadora = ({ isOpen, onClose }) => {
 
   const cargarTipoCambio = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/tipo-cambio/actual`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/tipo-cambio/actual');
       setFormData(prev => ({ ...prev, tipoCambio: response.data.venta.toString() }));
     } catch (error) {
       console.error('Error cargando tipo de cambio:', error);
@@ -55,10 +50,7 @@ const ModalCalculadora = ({ isOpen, onClose }) => {
 
   const cargarConstantes = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/pricing-constants/actual`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/pricing-constants/actual');
       setConstantes(response.data);
       
       // Setear adicional de markup desde la BD
@@ -74,10 +66,7 @@ const ModalCalculadora = ({ isOpen, onClose }) => {
 
   const cargarGruposComision = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/comisiones/calculadas`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/comisiones/calculadas');
       setGruposComision(response.data); // Array de {grupo_id, lista_4, lista_3_cuotas, ...}
     } catch (error) {
       console.error('Error cargando grupos de comisión:', error);
@@ -177,7 +166,6 @@ const ModalCalculadora = ({ isOpen, onClose }) => {
   const calcularCuotas = async () => {
     try {
       setCalculandoCuotas(true);
-      const token = localStorage.getItem('token');
       
       const requestData = {
         costo: parseFloat(formData.costo),
@@ -192,10 +180,9 @@ const ModalCalculadora = ({ isOpen, onClose }) => {
       
       console.log('📤 Enviando request calcular cuotas:', requestData);
       
-      const response = await axios.post(
-        `${API_URL}/calculos/calcular-cuotas`,
-        requestData,
-        { headers: { Authorization: `Bearer ${token}` } }
+      const response = await api.post(
+        '/calculos/calcular-cuotas',
+        requestData
       );
       
       console.log('📥 Respuesta cuotas:', response.data);
@@ -221,7 +208,6 @@ const ModalCalculadora = ({ isOpen, onClose }) => {
 
     try {
       setGuardando(true);
-      const token = localStorage.getItem('token');
 
       // Preparar datos de cuotas para JSONB
       const cuotasData = preciosCuotas.length > 0 ? {
@@ -241,8 +227,8 @@ const ModalCalculadora = ({ isOpen, onClose }) => {
       const grupoData = gruposComision.find(g => g.grupo_id === grupoSeleccionado);
       const comisionML = grupoData ? grupoData.lista_4 : 0;
 
-      await axios.post(
-        `${API_URL}/calculos`,
+      await api.post(
+        '/calculos',
         {
           descripcion: descripcion || 'Sin descripción',
           ean: ean || null,
@@ -257,8 +243,7 @@ const ModalCalculadora = ({ isOpen, onClose }) => {
           comision_total: parseFloat(resultados.comisionTotal),
           tipo_cambio_usado: parseFloat(formData.tipoCambio),
           precios_cuotas: cuotasData  // ← Guardar cuotas en JSONB
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+        }
       );
 
       alert('Cálculo guardado correctamente');
@@ -562,7 +547,7 @@ const ModalCalculadora = ({ isOpen, onClose }) => {
               <button onClick={onClose} className="btn-secondary">
                 Cerrar
               </button>
-              <button onClick={() => setGuardando(true)} className="btn-primary">
+              <button onClick={() => setGuardando(true)} className="btn-tesla outline-subtle-primary">
                 Guardar
               </button>
             </>
@@ -571,7 +556,7 @@ const ModalCalculadora = ({ isOpen, onClose }) => {
               <button onClick={() => setGuardando(false)} className="btn-secondary">
                 Cancelar
               </button>
-              <button onClick={handleGuardar} className="btn-primary">
+              <button onClick={handleGuardar} className="btn-tesla outline-subtle-primary">
                 Confirmar
               </button>
             </>

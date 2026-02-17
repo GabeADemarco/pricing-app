@@ -13,9 +13,9 @@ import Admin from './pages/Admin';
 import UltimosCambios from './pages/UltimosCambios';
 import PreciosListas from './pages/PreciosListas';
 import GestionPM from './pages/GestionPM';
+import GestionAlertas from './pages/GestionAlertas';
 import Banlist from './pages/Banlist';
 import ItemsSinMLA from './pages/ItemsSinMLA';
-import DashboardVentas from './pages/DashboardVentas';
 import DashboardMetricasML from './pages/DashboardMetricasML';
 import DashboardVentasFuera from './pages/DashboardVentasFuera';
 import DashboardTiendaNube from './pages/DashboardTiendaNube';
@@ -25,7 +25,7 @@ import Notificaciones from './pages/Notificaciones';
 import PedidosPreparacion from './pages/PedidosPreparacion';
 import Clientes from './pages/Clientes';
 import TurboRouting from './pages/TurboRouting';
-import FacturasCompras from './pages/FacturasCompras';
+import CuentasCorrientes from './pages/CuentasCorrientes';
 import ProtectedRoute from './components/ProtectedRoute';
 import ModalCalculadora from './components/ModalCalculadora';
 import SmartRedirect from './components/SmartRedirect';
@@ -75,6 +75,10 @@ function App() {
             v7_relativeSplatPath: true
           }}
         >
+          <ModalCalculadora
+            isOpen={mostrarCalculadora}
+            onClose={() => setMostrarCalculadora(false)}
+          />
           <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<ProtectedRoute><SmartRedirect /></ProtectedRoute>} />
@@ -113,14 +117,14 @@ function App() {
                     <GestionPM />
                   </ProtectedRoute>
                 } />
+                <Route path="/gestion/alertas" element={
+                  <ProtectedRoute permiso="alertas.gestionar">
+                    <GestionAlertas />
+                  </ProtectedRoute>
+                } />
                 <Route path="/mla-banlist" element={
                   <ProtectedRoute permiso="admin.gestionar_mla_banlist">
                     <Banlist />
-                  </ProtectedRoute>
-                } />
-                <Route path="/dashboard-ventas" element={
-                  <ProtectedRoute permisos={['ventas_ml.ver_dashboard', 'ventas_fuera.ver_dashboard', 'ventas_tn.ver_dashboard']}>
-                    <DashboardVentas />
                   </ProtectedRoute>
                 } />
                 <Route path="/dashboard-metricas-ml" element={
@@ -168,16 +172,16 @@ function App() {
                     <Clientes />
                   </ProtectedRoute>
                 } />
-                <Route path="/turbo-routing" element={
-                  <ProtectedRoute permiso="ordenes.gestionar_turbo_routing">
-                    <TurboRouting />
-                  </ProtectedRoute>
-                } />
-                <Route path="/facturas-compras" element={
-                  <ProtectedRoute permiso="facturas_compras.ver">
-                    <FacturasCompras />
-                  </ProtectedRoute>
-                } />
+            <Route path="/turbo-routing" element={
+              <ProtectedRoute permiso="ordenes.gestionar_turbo_routing">
+                <TurboRouting />
+              </ProtectedRoute>
+            } />
+            <Route path="/cuentas-corrientes" element={
+              <ProtectedRoute permiso="reportes.ver_cuentas_corrientes">
+                <CuentasCorrientes />
+              </ProtectedRoute>
+            } />
           </Route>
           </Routes>
         </BrowserRouter>

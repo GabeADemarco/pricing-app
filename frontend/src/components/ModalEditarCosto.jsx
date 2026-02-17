@@ -1,20 +1,6 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import styles from './TabRentabilidad.module.css';
-
-const API_URL = import.meta.env.VITE_API_URL;
-
-const api = axios.create({
-  baseURL: `${API_URL}`,
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
 export default function ModalEditarCosto({
   mostrar,
@@ -71,7 +57,7 @@ export default function ModalEditarCosto({
 
   const cargarMarkupCosto = async () => {
     try {
-      const response = await api.get('/configuracion/pricing-constants/actual');
+      const response = await api.get('/pricing-constants/actual');
       if (response.data.varios_porcentaje !== undefined) {
         setMarkupCosto(response.data.varios_porcentaje.toString());
         setMarkupCostoOriginal(response.data.varios_porcentaje);
@@ -170,13 +156,11 @@ export default function ModalEditarCosto({
 
     const tc = parseFloat(tipoCambio) || 1;
     let costoTotalARS = 0;
-    let hayUSD = false;
 
     for (const p of productos) {
       if (p.costo_unitario && p.costo_unitario > 0) {
         const costoProducto = p.costo_unitario * p.cantidad;
         if (p.moneda_costo === 'USD') {
-          hayUSD = true;
           costoTotalARS += costoProducto * tc;
         } else {
           costoTotalARS += costoProducto;

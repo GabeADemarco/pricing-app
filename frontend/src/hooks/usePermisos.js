@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8002/api';
+import api from '../services/api';
 
 /**
  * Hook para gestionar permisos del usuario actual
@@ -23,9 +21,7 @@ export function usePermisos() {
         return;
       }
 
-      const res = await axios.get(`${API_URL}/api/permisos/mis-permisos`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get('/permisos/mis-permisos');
 
       setPermisos(new Set(res.data.permisos));
       setRol(res.data.rol);
@@ -49,8 +45,8 @@ export function usePermisos() {
    * @returns {boolean}
    */
   const tienePermiso = useCallback((codigo) => {
-    // SUPERADMIN y ADMIN tienen todos los permisos
-    if (rol === 'SUPERADMIN' || rol === 'ADMIN') return true;
+    // SUPERADMIN tiene todos los permisos
+    if (rol === 'SUPERADMIN') return true;
     return permisos.has(codigo);
   }, [permisos, rol]);
 
@@ -60,7 +56,7 @@ export function usePermisos() {
    * @returns {boolean}
    */
   const tieneAlgunPermiso = useCallback((codigos) => {
-    if (rol === 'SUPERADMIN' || rol === 'ADMIN') return true;
+    if (rol === 'SUPERADMIN') return true;
     return codigos.some(codigo => permisos.has(codigo));
   }, [permisos, rol]);
 
@@ -70,7 +66,7 @@ export function usePermisos() {
    * @returns {boolean}
    */
   const tieneTodosPermisos = useCallback((codigos) => {
-    if (rol === 'SUPERADMIN' || rol === 'ADMIN') return true;
+    if (rol === 'SUPERADMIN') return true;
     return codigos.every(codigo => permisos.has(codigo));
   }, [permisos, rol]);
 

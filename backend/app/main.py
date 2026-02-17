@@ -1,10 +1,60 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from datetime import datetime
 import asyncio
-from pathlib import Path
-from app.api.endpoints import sync, productos, pricing, admin, auth, usuarios, auditoria, sync_ml, marcas_pm, mla_banlist, producto_banlist, ventas_ml, ventas_fuera_ml, commercial_transactions, comisiones, calculos, configuracion, items_sin_mla, dashboard_ml, erp_sync, ml_catalog, tienda_nube, gbp_parser, notificaciones, offsets_ganancia, rentabilidad, rentabilidad_fuera, vendedores_excluidos, ventas_tienda_nube, rentabilidad_tienda_nube, permisos, markups_tienda, roles, pedidos_preparacion, clientes, pedidos_export, usuarios_erp, pedidos_export_v2, pedidos_export_simple, produccion_banlist, turbo_routing, pedidos_export_local, sale_order_status, facturas_compras, nextcloud, uploads
+from app.api.endpoints import (
+    sync,
+    productos,
+    pricing,
+    admin,
+    auth,
+    usuarios,
+    auditoria,
+    sync_ml,
+    marcas_pm,
+    mla_banlist,
+    producto_banlist,
+    ventas_ml,
+    ventas_fuera_ml,
+    commercial_transactions,
+    comisiones,
+    calculos,
+    configuracion,
+    items_sin_mla,
+    dashboard_ml,
+    erp_sync,
+    ml_catalog,
+    tienda_nube,
+    gbp_parser,
+    notificaciones,
+    offsets_ganancia,
+    rentabilidad,
+    rentabilidad_fuera,
+    vendedores_excluidos,
+    ventas_tienda_nube,
+    rentabilidad_tienda_nube,
+    permisos,
+    markups_tienda,
+    roles,
+    pedidos_preparacion,
+    clientes,
+    pedidos_export,
+    usuarios_erp,
+    pedidos_export_v2,
+    pedidos_export_simple,
+    produccion_banlist,
+    turbo_routing,
+    pedidos_export_local,
+    sale_order_status,
+    asignaciones,
+    cuentas_corrientes,
+)
+from app.routers import alertas
+from app.core.config import settings
+from app.core.exceptions import http_exception_handler
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 # Variable global para controlar la tarea de background
 _background_task = None
@@ -15,12 +65,15 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json"
+    openapi_url="/api/openapi.json",
 )
+
+# Global error handler — ensures all errors follow the standard envelope
+app.add_exception_handler(HTTPException, http_exception_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -70,31 +123,19 @@ app.include_router(sale_order_status.router, prefix="/api", tags=["sale-order-st
 app.include_router(usuarios_erp.router, prefix="/api", tags=["usuarios-erp"])
 app.include_router(produccion_banlist.router, prefix="/api", tags=["produccion-banlist"])
 app.include_router(turbo_routing.router, prefix="/api", tags=["turbo-routing"])
-app.include_router(facturas_compras.router, prefix="/api", tags=["facturas-compras"])
-app.include_router(nextcloud.router, prefix="/api", tags=["nextcloud"])
-app.include_router(uploads.router, prefix="/api", tags=["uploads"])
+app.include_router(alertas.router, prefix="/api", tags=["alertas"])
+app.include_router(asignaciones.router, prefix="/api/asignaciones", tags=["asignaciones"])
+app.include_router(cuentas_corrientes.router, prefix="/api", tags=["cuentas-corrientes"])
 
-# Montar directorio de archivos estáticos para servir uploads
-# IMPORTANTE: Debe ir después de todos los routers para evitar conflictos de rutas
-# Esto permite acceder a los archivos directamente desde /api/files/facturas/{filename}
-uploads_dir = Path(__file__).parent.parent / "uploads" / "facturas"
-uploads_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/api/files/facturas", StaticFiles(directory=str(uploads_dir)), name="facturas_files")
 
 @app.get("/")
 async def root():
-    return {
-        "message": "Pricing API",
-        "version": "1.0.0",
-        "status": "running"
-    }
+    return {"message": "Pricing API", "version": "1.0.0", "status": "running"}
+
 
 @app.get("/health")
 async def health():
-    return {
-        "status": "ok",
-        "timestamp": datetime.now().isoformat()
-    }
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
 
 async def sync_pedidos_preparacion_task():
@@ -105,13 +146,13 @@ async def sync_pedidos_preparacion_task():
 
     # Esperar 30 segundos después del inicio para que todo esté listo
     await asyncio.sleep(30)
-    print("📦 Iniciando sincronización periódica de pedidos en preparación (cada 5 min)")
+    logger.info("Background task started: sync pedidos preparacion (interval=300s)")
 
     while True:
         try:
             await sync_pedidos_preparacion()
         except Exception as e:
-            print(f"❌ Error en sincronización de pedidos: {e}")
+            logger.error("Sync pedidos preparacion failed: %s", e, exc_info=True)
 
         # Esperar 5 minutos
         await asyncio.sleep(300)
@@ -120,7 +161,8 @@ async def sync_pedidos_preparacion_task():
 @app.on_event("startup")
 async def startup_event():
     global _background_task
-    print("🚀 Pricing API iniciada")
+    logger.info("Pricing API started (version=%s, env=%s)", app.version, settings.ENVIRONMENT)
+    logger.info("CORS allowed origins: %s", settings.cors_origins)
 
     # Iniciar tarea de sincronización de pedidos en preparación
     _background_task = asyncio.create_task(sync_pedidos_preparacion_task())
@@ -129,7 +171,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     global _background_task
-    print("👋 Pricing API detenida")
+    logger.info("Pricing API shutting down")
 
     # Cancelar tarea de background
     if _background_task:
@@ -137,4 +179,4 @@ async def shutdown_event():
         try:
             await _background_task
         except asyncio.CancelledError:
-            pass
+            logger.info("Background task cancelled successfully")

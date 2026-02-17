@@ -17,7 +17,8 @@ if __name__ == "__main__":
     if str(backend_path) not in sys.path:
         sys.path.insert(0, str(backend_path))
     from dotenv import load_dotenv
-    env_path = backend_path / '.env'
+
+    env_path = backend_path / ".env"
     load_dotenv(dotenv_path=env_path)
 
 import asyncio
@@ -47,7 +48,7 @@ async def refresh_access_token():
         "grant_type": "refresh_token",
         "client_id": settings.ML_CLIENT_ID,
         "client_secret": settings.ML_CLIENT_SECRET,
-        "refresh_token": REFRESH_TOKEN
+        "refresh_token": REFRESH_TOKEN,
     }
 
     async with httpx.AsyncClient() as client:
@@ -59,7 +60,7 @@ async def refresh_access_token():
         if tokens.get("refresh_token"):
             REFRESH_TOKEN = tokens.get("refresh_token")
 
-        print(f"✓ Token refrescado exitosamente")
+        print("✓ Token refrescado exitosamente")
         return ACCESS_TOKEN
 
 
@@ -93,9 +94,12 @@ async def obtener_mla_ids_activos(db: Session) -> list:
     print("Obteniendo MLA IDs de publicaciones ACTIVAS...")
 
     # Obtener MLA IDs de publicaciones activas en mercadolibre_items_publicados
-    mla_ids = db.query(MercadoLibreItemPublicado.mlp_publicationID).filter(
-        MercadoLibreItemPublicado.optval_statusId == 2
-    ).distinct().all()
+    mla_ids = (
+        db.query(MercadoLibreItemPublicado.mlp_publicationID)
+        .filter(MercadoLibreItemPublicado.optval_statusId == 2)
+        .distinct()
+        .all()
+    )
 
     ids = [row[0] for row in mla_ids if row[0]]  # Filtrar nulos
     print(f"✓ Encontradas {len(ids)} publicaciones ACTIVAS para sincronizar")
@@ -108,20 +112,37 @@ async def traer_detalles_batch(ids: list, db: Session):
     chunk_size = 20
     total_saved = 0
     total_updated = 0
+    total_errors = 0
+    errores_detalle = []
+
+    today = datetime.now().date()
 
     print(f"Procesando {len(ids)} publicaciones en batches de {chunk_size}...")
 
     for i in range(0, len(ids), chunk_size):
-        chunk = ids[i:i + chunk_size]
+        chunk = ids[i : i + chunk_size]
         ids_str = ",".join(chunk)
 
+        # Llamada a la API (si falla, loguear y seguir con el siguiente chunk)
         try:
             batch = await call_meli(f"/items?ids={ids_str}")
+        except Exception as e:
+            total_errors += len(chunk)
+            errores_detalle.append(f"  ⚠️  API error chunk [{chunk[0]}...{chunk[-1]}]: {str(e)[:100]}")
+            continue
 
-            for item_wrapper in batch:
+        # Procesar cada publicación INDIVIDUALMENTE
+        for item_wrapper in batch:
+            mla_id = None
+            try:
                 item = item_wrapper.get("body")
                 if not item:
+                    error_status = item_wrapper.get("code", "?")
+                    total_errors += 1
+                    errores_detalle.append(f"  ⚠️  ML respondió sin body (code={error_status})")
                     continue
+
+                mla_id = item.get("id")
 
                 # Buscar campaña de cuotas
                 campaign = None
@@ -152,14 +173,14 @@ async def traer_detalles_batch(ids: list, db: Session):
                 if seller_sku and seller_sku.isdigit():
                     item_id = int(seller_sku)
 
-                mla_id = item.get("id")
-
                 # Verificar si ya existe un snapshot del día de hoy para este MLA_ID
-                today = datetime.now().date()
-                existing = db.query(MLPublicationSnapshot).filter(
-                    MLPublicationSnapshot.mla_id == mla_id,
-                    func.date(MLPublicationSnapshot.snapshot_date) == today
-                ).first()
+                existing = (
+                    db.query(MLPublicationSnapshot)
+                    .filter(
+                        MLPublicationSnapshot.mla_id == mla_id, func.date(MLPublicationSnapshot.snapshot_date) == today
+                    )
+                    .first()
+                )
 
                 if existing:
                     # Actualizar el existente
@@ -175,6 +196,7 @@ async def traer_detalles_batch(ids: list, db: Session):
                     existing.seller_sku = seller_sku
                     existing.item_id = item_id
                     existing.snapshot_date = datetime.now()
+                    db.commit()
                     total_updated += 1
                 else:
                     # Crear nuevo registro de snapshot
@@ -191,24 +213,35 @@ async def traer_detalles_batch(ids: list, db: Session):
                         installments_campaign=campaign,
                         seller_sku=seller_sku,
                         item_id=item_id,
-                        snapshot_date=datetime.now()
+                        snapshot_date=datetime.now(),
                     )
                     db.add(snapshot)
+                    db.commit()
                     total_saved += 1
 
-            # Commit cada batch
-            db.commit()
-            print(f"  Procesados {min(i + chunk_size, len(ids))}/{len(ids)} - Nuevos: {total_saved}, Actualizados: {total_updated}")
+            except Exception as e:
+                db.rollback()
+                total_errors += 1
+                errores_detalle.append(f"  ⚠️  {mla_id or 'desconocido'}: {str(e)[:120]}")
+                continue
 
-        except Exception as e:
-            print(f"  Error en batch {i//chunk_size + 1}: {str(e)}")
-            db.rollback()
-            continue
+        print(
+            f"  Procesados {min(i + chunk_size, len(ids))}/{len(ids)} - Nuevos: {total_saved}, Actualizados: {total_updated}, Errores: {total_errors}"
+        )
 
         # Pequeña pausa para no saturar la API
         await asyncio.sleep(0.5)
 
-    print(f"✓ Sincronización incremental completada: {total_saved} nuevos, {total_updated} actualizados")
+    print()
+    print(
+        f"✓ Sincronización incremental completada: {total_saved} nuevos, {total_updated} actualizados, {total_errors} errores"
+    )
+
+    if errores_detalle:
+        print(f"\nDETALLE DE ERRORES ({len(errores_detalle)}):")
+        for err in errores_detalle:
+            print(err)
+
     return total_saved, total_updated
 
 

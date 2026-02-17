@@ -33,7 +33,8 @@ def sync_tiendanube_orders(from_date: date = None, to_date: date = None):
     if not from_date:
         from_date = date.today() - timedelta(days=30)
     if not to_date:
-        to_date = date.today()
+        # Agregar 1 día para incluir TODO el día de hoy (hasta las 23:59:59)
+        to_date = date.today() + timedelta(days=1)
     
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Sincronizando órdenes TiendaNube desde {from_date} hasta {to_date}...")
     
@@ -88,18 +89,18 @@ def sync_tiendanube_orders(from_date: date = None, to_date: date = None):
                     )
                 ).first()
                 
-                # Preparar datos
+                # Preparar datos (nombres de campos en minúscula según el modelo)
                 orden_data = {
                     'comp_id': comp_id,
                     'tno_id': tno_id,
                     'tno_cd': record.get('tno_cd'),
                     'tn_id': record.get('tn_id'),
-                    'tno_orderID': record.get('tno_orderID'),
-                    'tno_JSon': record.get('tno_JSon'),
+                    'tno_orderid': record.get('tno_orderID'),  # Minúscula: tno_orderid
+                    'tno_json': record.get('tno_JSon'),        # Minúscula: tno_json
                     'bra_id': record.get('bra_id'),
                     'soh_id': record.get('soh_id'),
                     'cust_id': record.get('cust_id'),
-                    'tno_isCancelled': record.get('tno_isCancelled')
+                    'tno_iscancelled': record.get('tno_isCancelled')  # Minúscula: tno_iscancelled
                 }
                 
                 if orden:
@@ -113,6 +114,32 @@ def sync_tiendanube_orders(from_date: date = None, to_date: date = None):
                     orden = TiendaNubeOrder(**orden_data)
                     db.add(orden)
                     nuevos += 1
+                
+                # IMPORTANTE: Actualizar tb_sale_order_header con datos de TiendaNube
+                if orden_data.get('soh_id') and orden_data.get('bra_id'):
+                    from app.models.sale_order_header import SaleOrderHeader
+                    header = db.query(SaleOrderHeader).filter(
+                        and_(
+                            SaleOrderHeader.soh_id == orden_data['soh_id'],
+                            SaleOrderHeader.bra_id == orden_data['bra_id']
+                        )
+                    ).first()
+                    
+                    if header:
+                        # Extraer número de orden desde el JSON
+                        tn_number = None
+                        if orden_data.get('tno_json'):
+                            try:
+                                import json
+                                tn_data = json.loads(orden_data['tno_json'])
+                                tn_number = str(tn_data.get('number', ''))
+                            except:
+                                pass
+                        
+                        # Actualizar campos de TiendaNube en el header
+                        header.ws_internalid = str(orden_data.get('tno_orderid', ''))
+                        if tn_number:
+                            header.tiendanube_number = tn_number
                 
                 # Commit cada 100 registros
                 if (nuevos + actualizados) % 100 == 0:

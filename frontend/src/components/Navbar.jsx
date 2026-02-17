@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import styles from './Navbar.module.css';
 import logo from '../assets/white-g-logo.png';
 import { useAuthStore } from '../store/authStore';
@@ -8,23 +8,11 @@ import { usePermisos } from '../contexts/PermisosContext';
 import ThemeToggle from './ThemeToggle';
 import NotificationBell from './NotificationBell';
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
-  const { tienePermiso, tieneAlgunPermiso } = usePermisos();
+  const { tienePermiso } = usePermisos();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(null);
   const [facturadoHoy, setFacturadoHoy] = useState(null);
@@ -40,7 +28,6 @@ export default function Navbar() {
   const puedeGestionarTurbo = tienePermiso('ordenes.gestionar_turbo_routing');
   const puedeVerTienda = tienePermiso('productos.ver_tienda');
   const puedeVerPreciosListas = tienePermiso('productos.ver');
-  const puedeVerDashboardVentas = tieneAlgunPermiso(['ventas_ml.ver_dashboard', 'ventas_fuera.ver_dashboard', 'ventas_tn.ver_dashboard']);
   const puedeVerMetricasML = tienePermiso('ventas_ml.ver_dashboard');
   const puedeVerVentasFuera = tienePermiso('ventas_fuera.ver_dashboard');
   const puedeVerTiendaNube = tienePermiso('ventas_tn.ver_dashboard');
@@ -65,8 +52,10 @@ export default function Navbar() {
     return paths.some(path => location.pathname === path);
   };
 
+  const logout = useAuthStore((state) => state.logout);
+
   const handleLogout = () => {
-    localStorage.removeItem('token');
+    logout();
     navigate('/login');
   };
 
@@ -180,14 +169,14 @@ export default function Navbar() {
           )}
 
           {/* Dropdown Reportes (solo si tiene algún permiso de reportes) */}
-          {(puedeVerDashboardVentas || puedeVerMetricasML || puedeVerVentasFuera || puedeVerTiendaNube || puedeVerCalculos || puedeVerHistorial) && (
+          {(puedeVerMetricasML || puedeVerVentasFuera || puedeVerTiendaNube || puedeVerCalculos || puedeVerHistorial) && (
             <div
               className={styles.dropdown}
               onMouseEnter={() => setDropdownOpen('reportes')}
               onMouseLeave={() => setDropdownOpen(null)}
             >
               <div
-                className={`${styles.link} ${styles.dropdownTrigger} ${isDropdownActive(['/dashboard-ventas', '/dashboard-metricas-ml', '/dashboard-ventas-fuera', '/dashboard-tienda-nube', '/calculos', '/ultimos-cambios']) ? styles.active : ''}`}
+                className={`${styles.link} ${styles.dropdownTrigger} ${isDropdownActive(['/dashboard-metricas-ml', '/dashboard-ventas-fuera', '/dashboard-tienda-nube', '/calculos', '/ultimos-cambios']) ? styles.active : ''}`}
                 onClick={() => setDropdownOpen(dropdownOpen === 'reportes' ? null : 'reportes')}
               >
                 Reportes ▾
@@ -197,15 +186,6 @@ export default function Navbar() {
                   className={styles.dropdownMenu}
                   onMouseEnter={() => setDropdownOpen('reportes')}
                 >
-                  {puedeVerDashboardVentas && (
-                    <Link
-                      to="/dashboard-ventas"
-                      className={`${styles.dropdownItem} ${isActive('/dashboard-ventas') ? styles.activeDropdown : ''}`}
-                      onClick={() => setDropdownOpen(null)}
-                    >
-                      Dashboard Ventas
-                    </Link>
-                  )}
                   {puedeVerMetricasML && (
                     <Link
                       to="/dashboard-metricas-ml"
@@ -375,16 +355,6 @@ export default function Navbar() {
               onClick={handleLinkClick}
             >
               Preparación
-            </Link>
-          )}
-
-          {puedeVerDashboardVentas && (
-            <Link
-              to="/dashboard-ventas"
-              className={`${styles.mobileLink} ${isActive('/dashboard-ventas') ? styles.active : ''}`}
-              onClick={handleLinkClick}
-            >
-              Dashboard Ventas
             </Link>
           )}
 

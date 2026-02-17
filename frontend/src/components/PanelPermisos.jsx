@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import adminStyles from '../pages/Admin.module.css';
 import styles from './PanelPermisos.module.css';
 
@@ -19,7 +19,7 @@ export default function PanelPermisos() {
   const [roles, setRoles] = useState([]);
   const [usuarioSeleccionado, setUsuarioSeleccionado] = useState(null);
   const [permisosUsuario, setPermisosUsuario] = useState(null);
-  const [catalogo, setCatalogo] = useState({});
+  const [, setCatalogo] = useState({});
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState(null);
@@ -42,7 +42,7 @@ export default function PanelPermisos() {
   const [cambiandoPassword, setCambiandoPassword] = useState(false);
   const [nuevaPassword, setNuevaPassword] = useState('');
 
-  const API_URL = import.meta.env.VITE_API_URL;
+
 
   useEffect(() => {
     cargarDatos();
@@ -50,14 +50,11 @@ export default function PanelPermisos() {
 
   const cargarDatos = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const headers = { Authorization: `Bearer ${token}` };
-
       const [usuariosRes, catalogoRes, rolesRes, meRes] = await Promise.all([
-        axios.get(`${API_URL}/usuarios`, { headers }),
-        axios.get(`${API_URL}/permisos/catalogo`, { headers }),
-        axios.get(`${API_URL}/roles`, { headers }),
-        axios.get(`${API_URL}/auth/me`, { headers })
+        api.get('/usuarios'),
+        api.get('/permisos/catalogo'),
+        api.get('/roles'),
+        api.get('/auth/me')
       ]);
 
       const currentUser = meRes.data;
@@ -87,10 +84,7 @@ export default function PanelPermisos() {
     setCambiandoPassword(false);
 
     try {
-      const token = localStorage.getItem('token');
-      const headers = { Authorization: `Bearer ${token}` };
-
-      const res = await axios.get(`${API_URL}/permisos/usuario/${usuario.id}`, { headers });
+      const res = await api.get(`/permisos/usuario/${usuario.id}`);
       setPermisosUsuario(res.data);
     } catch (error) {
       console.error('Error cargando permisos:', error);
@@ -106,20 +100,17 @@ export default function PanelPermisos() {
 
     setGuardando(true);
     try {
-      const token = localStorage.getItem('token');
-      const headers = { Authorization: `Bearer ${token}` };
-
       // Buscar el rol seleccionado para obtener el código
       const rolSeleccionado = roles.find(r => r.id === formUsuario.rol_id);
 
-      await axios.post(`${API_URL}/usuarios`, {
+      await api.post('/usuarios', {
         username: formUsuario.username,
         email: formUsuario.email || null,
         nombre: formUsuario.nombre,
         password: formUsuario.password,
         rol: rolSeleccionado?.codigo || 'VENTAS',
         rol_id: formUsuario.rol_id
-      }, { headers });
+      });
 
       setMensaje({ tipo: 'success', texto: 'Usuario creado correctamente' });
       setMostrarFormUsuario(false);
@@ -139,9 +130,6 @@ export default function PanelPermisos() {
 
     setGuardando(true);
     try {
-      const token = localStorage.getItem('token');
-      const headers = { Authorization: `Bearer ${token}` };
-
       const cambios = {};
       if (formUsuario.username) cambios.username = formUsuario.username;
       if (formUsuario.email !== undefined) cambios.email = formUsuario.email || null;
@@ -152,7 +140,7 @@ export default function PanelPermisos() {
         cambios.rol_id = formUsuario.rol_id;
       }
 
-      await axios.patch(`${API_URL}/usuarios/${usuarioSeleccionado.id}`, cambios, { headers });
+      await api.patch(`/usuarios/${usuarioSeleccionado.id}`, cambios);
 
       setMensaje({ tipo: 'success', texto: 'Usuario actualizado correctamente' });
       setEditandoUsuario(null);
@@ -178,12 +166,9 @@ export default function PanelPermisos() {
 
     setGuardando(true);
     try {
-      const token = localStorage.getItem('token');
-      const headers = { Authorization: `Bearer ${token}` };
-
-      await axios.patch(`${API_URL}/usuarios/${usuarioSeleccionado.id}/password`, {
+      await api.patch(`/usuarios/${usuarioSeleccionado.id}/password`, {
         nueva_password: nuevaPassword
-      }, { headers });
+      });
 
       setMensaje({ tipo: 'success', texto: 'Contraseña actualizada correctamente' });
       setCambiandoPassword(false);
@@ -202,12 +187,9 @@ export default function PanelPermisos() {
 
     setGuardando(true);
     try {
-      const token = localStorage.getItem('token');
-      const headers = { Authorization: `Bearer ${token}` };
-
-      await axios.patch(`${API_URL}/usuarios/${usuarioSeleccionado.id}`, {
+      await api.patch(`/usuarios/${usuarioSeleccionado.id}`, {
         activo: !usuarioSeleccionado.activo
-      }, { headers });
+      });
 
       setMensaje({ tipo: 'success', texto: usuarioSeleccionado.activo ? 'Usuario desactivado' : 'Usuario activado' });
       cargarDatos();
@@ -226,15 +208,12 @@ export default function PanelPermisos() {
 
     setGuardando(true);
     try {
-      const token = localStorage.getItem('token');
-      const headers = { Authorization: `Bearer ${token}` };
-
-      await axios.post(`${API_URL}/permisos/override`, {
+      await api.post('/permisos/override', {
         usuario_id: usuarioSeleccionado.id,
         permiso_codigo: permisoCodigo,
         concedido: conceder,
         motivo: `Override desde panel de permisos`
-      }, { headers });
+      });
 
       await seleccionarUsuario(usuarioSeleccionado);
       setMensaje({ tipo: 'success', texto: `Permiso ${conceder ? 'concedido' : 'denegado'}` });
@@ -252,10 +231,7 @@ export default function PanelPermisos() {
 
     setGuardando(true);
     try {
-      const token = localStorage.getItem('token');
-      const headers = { Authorization: `Bearer ${token}` };
-
-      await axios.delete(`${API_URL}/permisos/override/${usuarioSeleccionado.id}/${permisoCodigo}`, { headers });
+      await api.delete(`/permisos/override/${usuarioSeleccionado.id}/${permisoCodigo}`);
 
       await seleccionarUsuario(usuarioSeleccionado);
       setMensaje({ tipo: 'success', texto: 'Vuelto al permiso base del rol' });
@@ -321,15 +297,7 @@ export default function PanelPermisos() {
                 setMostrarFormUsuario(!mostrarFormUsuario);
                 setFormUsuario({ email: '', nombre: '', password: '', rol_id: roles.find(r => r.codigo === 'VENTAS')?.id });
               }}
-              style={{
-                padding: '6px 12px',
-                background: 'var(--primary)',
-                color: 'var(--text-inverse)',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '13px'
-              }}
+              className="btn-tesla outline-subtle-primary sm"
             >
               + Nuevo Usuario
             </button>
@@ -419,15 +387,8 @@ export default function PanelPermisos() {
                   <button
                     onClick={crearUsuario}
                     disabled={guardando}
-                    style={{
-                      flex: 1,
-                      padding: '8px',
-                      background: 'var(--success)',
-                      color: 'var(--text-inverse)',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer'
-                    }}
+                    className="btn-tesla outline-subtle-success"
+                    style={{ flex: 1 }}
                   >
                     {guardando ? 'Creando...' : 'Crear Usuario'}
                   </button>
@@ -436,14 +397,7 @@ export default function PanelPermisos() {
                       setMostrarFormUsuario(false);
                       setFormUsuario({ email: '', nombre: '', password: '', rol_id: null });
                     }}
-                    style={{
-                      padding: '8px 16px',
-                      background: 'var(--danger)',
-                      color: 'var(--text-inverse)',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer'
-                    }}
+                    className="btn-tesla outline-subtle-danger"
                   >
                     Cancelar
                   </button>
@@ -604,29 +558,13 @@ export default function PanelPermisos() {
                           <button
                             onClick={actualizarUsuario}
                             disabled={guardando}
-                            style={{
-                              padding: '6px 12px',
-                              background: 'var(--success)',
-                              color: 'var(--text-inverse)',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              fontSize: '13px'
-                            }}
+                            className="btn-tesla outline-subtle-success sm"
                           >
                             Guardar
                           </button>
                           <button
                             onClick={() => setEditandoUsuario(null)}
-                            style={{
-                              padding: '6px 12px',
-                              background: 'var(--bg-tertiary)',
-                              color: 'var(--text-primary)',
-                              border: '1px solid var(--border-primary)',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              fontSize: '13px'
-                            }}
+                            className="btn-tesla ghost sm"
                           >
                             Cancelar
                           </button>
@@ -685,30 +623,14 @@ export default function PanelPermisos() {
                       </button>
                       <button
                         onClick={() => setCambiandoPassword(!cambiandoPassword)}
-                        style={{
-                          padding: '6px 12px',
-                          background: 'var(--purple)',
-                          color: 'var(--text-inverse)',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '12px'
-                        }}
+                        className="btn-tesla outline-subtle-primary sm"
                       >
                         Password
                       </button>
                       <button
                         onClick={toggleUsuarioActivo}
                         disabled={guardando}
-                        style={{
-                          padding: '6px 12px',
-                          background: usuarioSeleccionado.activo ? 'var(--error-bg)' : 'var(--success-bg)',
-                          color: usuarioSeleccionado.activo ? 'var(--error-text)' : 'var(--success-text)',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '12px'
-                        }}
+                        className={`btn-tesla sm ${usuarioSeleccionado.activo ? 'outline-subtle-danger' : 'outline-subtle-success'}`}
                       >
                         {usuarioSeleccionado.activo ? 'Desactivar' : 'Activar'}
                       </button>
@@ -744,14 +666,7 @@ export default function PanelPermisos() {
                     <button
                       onClick={cambiarPassword}
                       disabled={guardando || !nuevaPassword}
-                      style={{
-                        padding: '8px 16px',
-                        background: 'var(--success)',
-                        color: 'var(--text-inverse)',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
+                      className="btn-tesla outline-subtle-success"
                     >
                       Cambiar
                     </button>
@@ -760,14 +675,7 @@ export default function PanelPermisos() {
                         setCambiandoPassword(false);
                         setNuevaPassword('');
                       }}
-                      style={{
-                        padding: '8px 12px',
-                        background: 'var(--bg-tertiary)',
-                        color: 'var(--text-primary)',
-                        border: '1px solid var(--border-primary)',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
+                      className="btn-tesla ghost"
                     >
                       Cancelar
                     </button>

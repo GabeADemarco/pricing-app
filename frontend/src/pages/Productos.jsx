@@ -3,15 +3,15 @@ import { useSearchParams } from 'react-router-dom';
 import { productosAPI } from '../services/api';
 import PricingModalTesla from '../components/PricingModalTesla';
 import { useDebounce } from '../hooks/useDebounce';
-import axios from 'axios';
+import api from '../services/api';
 import { useAuthStore } from '../store/authStore';
 import { usePermisos } from '../contexts/PermisosContext';
 import ExportModal from '../components/ExportModal';
-import xlsIcon from '../assets/xls.svg';
 import CalcularWebModal from '../components/CalcularWebModal';
 import CalcularPVPModal from '../components/CalcularPVPModal';
 import ModalInfoProducto from '../components/ModalInfoProducto';
 import StatCard from '../components/StatCard';
+import '../styles/tabla-productos-shared.css';
 import './Productos.css';
 
 // Constantes para filtros
@@ -61,8 +61,6 @@ export default function Productos() {
   const [marcas, setMarcas] = useState([]);
   const [marcasSeleccionadas, setMarcasSeleccionadas] = useState([]);
   const [busquedaMarca, setBusquedaMarca] = useState('');
-  const [ordenColumna, setOrdenColumna] = useState(null);
-  const [ordenDireccion, setOrdenDireccion] = useState('asc');
   const [ordenColumnas, setOrdenColumnas] = useState([]);
   const [subcategorias, setSubcategorias] = useState([]);
   const [subcategoriasSeleccionadas, setSubcategoriasSeleccionadas] = useState([]);
@@ -97,6 +95,11 @@ export default function Productos() {
   const [marcasPorPM, setMarcasPorPM] = useState([]); // Marcas filtradas por PMs seleccionados
   const [subcategoriasPorPM, setSubcategoriasPorPM] = useState([]); // Subcategorías filtradas por PMs seleccionados
 
+  // Offsets de ganancia (sin límite) para mostrar markup ajustado
+  const [offsetsVigentes, setOffsetsVigentes] = useState([]);
+  const [offsetGrupoFiltros, setOffsetGrupoFiltros] = useState({}); // { grupo_id: [filtros] }
+  const [tipoCambioUSD, setTipoCambioUSD] = useState(null);
+
   // Estados para navegación por teclado
   const [celdaActiva, setCeldaActiva] = useState(null); // { rowIndex, colIndex }
   const [modoNavegacion, setModoNavegacion] = useState(false);
@@ -128,6 +131,9 @@ export default function Productos() {
   const [mostrarModalInfo, setMostrarModalInfo] = useState(false);
   const [productoInfo, setProductoInfo] = useState(null);
 
+  // Recálculo masivo de cuotas
+  const [recalculandoCuotasMasivo, setRecalculandoCuotasMasivo] = useState(false);
+
   // Toast notification
   const [toast, setToast] = useState(null);
 
@@ -138,10 +144,13 @@ export default function Productos() {
   const [palabraObjetivo, setPalabraObjetivo] = useState('');
   const [motivoBan, setMotivoBan] = useState('');
 
+  // Modal de confirmación markup negativo
+  const [mostrarModalMarkupNegativo, setMostrarModalMarkupNegativo] = useState(false);
+  const [datosGuardadoPendiente, setDatosGuardadoPendiente] = useState(null);
+
   const user = useAuthStore((state) => state.user);
   const { tienePermiso } = usePermisos();
 
-  const API_URL = import.meta.env.VITE_API_URL;
   const toastTimeoutRef = useRef(null);
 
   // Permisos granulares de edición
@@ -395,7 +404,7 @@ export default function Productos() {
           ]);
           setMarcasPorPM(marcasRes.data.marcas);
           setSubcategoriasPorPM(subcatsRes.data.subcategorias.map(s => s.id));
-        } catch (error) {
+        } catch {
           setMarcasPorPM([]);
           setSubcategoriasPorPM([]);
         }
@@ -453,7 +462,7 @@ export default function Productos() {
       // Cargar estadísticas dinámicas según filtros aplicados
       const statsRes = await productosAPI.statsDinamicos(params);
       setStats(statsRes.data);
-    } catch (error) {
+    } catch {
       // Error silencioso, no afecta funcionalidad principal
     }
   };
@@ -463,17 +472,54 @@ export default function Productos() {
     cargarUsuariosAuditoria();
     cargarTiposAccion();
     cargarPMs();
+    cargarOffsetsVigentes();
   }, []);
+
+  // Cargar offsets vigentes sin límite de unidades/monto + tipo de cambio
+  const cargarOffsetsVigentes = async () => {
+    try {
+      const [offsetsRes, tcRes] = await Promise.all([
+        api.get('/offsets-ganancia', { params: { solo_vigentes: true } }),
+        api.get('/tipo-cambio-hoy')
+      ]);
+
+      const tc = tcRes.data.tipo_cambio || 1000;
+      setTipoCambioUSD(tc);
+
+      // Filtrar: solo offsets sin límite Y tipo porcentaje_costo o monto_por_unidad (NO monto_fijo)
+      const sinLimite = (offsetsRes.data || []).filter(o =>
+        !o.max_unidades && !o.max_monto_usd &&
+        (o.tipo_offset === 'porcentaje_costo' || o.tipo_offset === 'monto_por_unidad')
+      );
+      setOffsetsVigentes(sinLimite);
+
+      // Para offsets de grupo, traer los filtros
+      const grupoIds = [...new Set(sinLimite.filter(o => o.grupo_id).map(o => o.grupo_id))];
+      if (grupoIds.length > 0) {
+        const filtrosPromises = grupoIds.map(gId =>
+          api.get(`/offset-grupos/${gId}/filtros`)
+        );
+        const filtrosRes = await Promise.all(filtrosPromises);
+        const filtrosMap = {};
+        grupoIds.forEach((gId, idx) => {
+          filtrosMap[gId] = filtrosRes[idx].data || [];
+        });
+        setOffsetGrupoFiltros(filtrosMap);
+      }
+    } catch {
+      // Error silencioso - no afecta funcionalidad principal
+    }
+  };
 
   // Recargar marcas cuando cambien filtros (excepto marcasSeleccionadas)
   useEffect(() => {
     cargarMarcas();
-  }, [debouncedSearch, filtroStock, filtroPrecio, subcategoriasSeleccionadas, filtroRebate, filtroOferta, filtroWebTransf, filtroTiendaNube, filtroMarkupClasica, filtroMarkupRebate, filtroMarkupOferta, filtroMarkupWebTransf, filtroOutOfCards, coloresSeleccionados, filtrosAuditoria]);
+  }, [debouncedSearch, filtroStock, filtroPrecio, subcategoriasSeleccionadas, filtroRebate, filtroOferta, filtroWebTransf, filtroTiendaNube, filtroMarkupClasica, filtroMarkupRebate, filtroMarkupOferta, filtroMarkupWebTransf, filtroOutOfCards, coloresSeleccionados, filtrosAuditoria, pmsSeleccionados]);
 
   // Recargar subcategorías cuando cambien filtros (excepto subcategoriasSeleccionadas)
   useEffect(() => {
     cargarSubcategorias();
-  }, [debouncedSearch, filtroStock, filtroPrecio, marcasSeleccionadas, filtroRebate, filtroOferta, filtroWebTransf, filtroTiendaNube, filtroMarkupClasica, filtroMarkupRebate, filtroMarkupOferta, filtroMarkupWebTransf, filtroOutOfCards, coloresSeleccionados, filtrosAuditoria]);
+  }, [debouncedSearch, filtroStock, filtroPrecio, marcasSeleccionadas, filtroRebate, filtroOferta, filtroWebTransf, filtroTiendaNube, filtroMarkupClasica, filtroMarkupRebate, filtroMarkupOferta, filtroMarkupWebTransf, filtroOutOfCards, coloresSeleccionados, filtrosAuditoria, pmsSeleccionados]);
 
   // Copiar enlaces al clipboard con Ctrl+F1/F2/F3 o Ctrl+Shift+1/2/3 (alternativa para Linux)
   useEffect(() => {
@@ -512,7 +558,7 @@ export default function Productos() {
         const hayProductoSeleccionado = celdaActiva !== null && celdaActiva.rowIndex !== null;
 
         if (!enModoEdicion && !hayProductoSeleccionado) {
-          showToast('⚠️ Debes posicionarte sobre un producto para usar este atajo (Enter para activar navegación)', 'error');
+          showToast('Debes posicionarte sobre un producto para usar este atajo (Enter para activar navegación)', 'error');
           return;
         }
 
@@ -536,12 +582,12 @@ export default function Productos() {
         }
 
         if (!producto) {
-          showToast('⚠️ Producto no encontrado', 'error');
+          showToast('Producto no encontrado', 'error');
           return;
         }
 
         if (!producto.codigo) {
-          showToast('⚠️ El producto no tiene código asignado', 'error');
+          showToast('El producto no tiene código asignado', 'error');
           return;
         }
 
@@ -551,7 +597,7 @@ export default function Productos() {
         if (accion === 1) {
           navigator.clipboard.writeText(itemCode).then(() => {
             showToast(`✅ Código copiado: ${itemCode}`);
-          }).catch(err => {
+          }).catch(() => {
             showToast('❌ Error al copiar al portapapeles', 'error');
             
           });
@@ -562,7 +608,7 @@ export default function Productos() {
           const url = `https://listado.mercadolibre.com.ar/${itemCode}_OrderId_PRICE_NoIndex_True`;
           navigator.clipboard.writeText(url).then(() => {
             showToast(`✅ Enlace 1 copiado: ${itemCode}`);
-          }).catch(err => {
+          }).catch(() => {
             showToast('❌ Error al copiar al portapapeles', 'error');
             
           });
@@ -573,7 +619,7 @@ export default function Productos() {
           const url = `https://www.mercadolibre.com.ar/publicaciones/listado/promos?filters=official_store-57997&page=1&search=${itemCode}&sort=lowest_price`;
           navigator.clipboard.writeText(url).then(() => {
             showToast(`✅ Enlace 2 copiado: ${itemCode}`);
-          }).catch(err => {
+          }).catch(() => {
             showToast('❌ Error al copiar al portapapeles', 'error');
             
           });
@@ -704,10 +750,11 @@ export default function Productos() {
       if (filtrosAuditoria.tipos_accion.length > 0) params.audit_tipos_accion = filtrosAuditoria.tipos_accion.join(',');
       if (filtrosAuditoria.fecha_desde) params.audit_fecha_desde = filtrosAuditoria.fecha_desde;
       if (filtrosAuditoria.fecha_hasta) params.audit_fecha_hasta = filtrosAuditoria.fecha_hasta;
+      if (pmsSeleccionados.length > 0) params.pms = pmsSeleccionados.join(',');
 
       const response = await productosAPI.marcas(params);
       setMarcas(response.data.marcas);
-    } catch (error) {
+    } catch {
       showToast('Error al cargar marcas', 'error');
     }
   };
@@ -723,20 +770,18 @@ export default function Productos() {
 
   const guardarWebTransf = async (itemId) => {
     try {
-      const token = localStorage.getItem('token');
       // Normalizar: reemplazar coma por punto
       const porcentajeNumerico = parseFloat(webTransfTemp.porcentaje.toString().replace(',', '.')) || 0;
 
-      const response = await axios.patch(
-        `${API_URL}/productos/${itemId}/web-transferencia`,
+      const response = await api.patch(
+        `/productos/${itemId}/web-transferencia`,
         null,
         {
           params: {
             participa: webTransfTemp.participa,
             porcentaje_markup: porcentajeNumerico,
             preservar_porcentaje: webTransfTemp.preservar
-          },
-          headers: { Authorization: `Bearer ${token}` }
+          }
         }
       );
 
@@ -754,8 +799,7 @@ export default function Productos() {
       ));
 
       setEditandoWebTransf(null);
-    } catch (error) {
-      
+    } catch {
       showToast('Error al guardar', 'error');
     }
   };
@@ -851,7 +895,7 @@ export default function Productos() {
       setTotalProductos(productosRes.data.total || productosRes.data.productos.length);
       setProductos(productosRes.data.productos);
 
-    } catch (error) {
+    } catch {
       showToast('Error al cargar productos', 'error');
     } finally {
       setLoading(false);
@@ -892,10 +936,11 @@ export default function Productos() {
       if (filtrosAuditoria.tipos_accion.length > 0) params.audit_tipos_accion = filtrosAuditoria.tipos_accion.join(',');
       if (filtrosAuditoria.fecha_desde) params.audit_fecha_desde = filtrosAuditoria.fecha_desde;
       if (filtrosAuditoria.fecha_hasta) params.audit_fecha_hasta = filtrosAuditoria.fecha_hasta;
+      if (pmsSeleccionados.length > 0) params.pms = pmsSeleccionados.join(',');
 
       const response = await productosAPI.subcategorias(params);
       setSubcategorias(response.data.categorias);
-    } catch (error) {
+    } catch {
       showToast('Error al cargar subcategorías', 'error');
     }
   };
@@ -935,15 +980,12 @@ export default function Productos() {
 
   const verAuditoria = async (productoId) => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(
-        `${API_URL}/productos/${productoId}/auditoria`,
-        { headers: { Authorization: `Bearer ${token}` }}
+      const response = await api.get(
+        `/productos/${productoId}/auditoria`
       );
       setAuditoriaData(response.data);
       setAuditoriaVisible(true);
-    } catch (error) {
-      
+    } catch {
       showToast('Error al cargar el historial', 'error');
     }
   };
@@ -955,11 +997,109 @@ export default function Productos() {
     return 'var(--success)';
   };
 
+  // Calcula el markup con offset aplicado para un producto
+  // Retorna null si no hay offsets aplicables o no se puede calcular
+  const calcularMarkupConOffset = (producto) => {
+    if (!producto.markup && producto.markup !== 0) return null;
+    if (!producto.costo || producto.costo <= 0) return null;
+    if (offsetsVigentes.length === 0) return null;
+
+    // Convertir costo a ARS si es necesario
+    const costoARS = producto.moneda_costo === 'USD' && tipoCambioUSD
+      ? producto.costo * tipoCambioUSD
+      : producto.costo;
+
+    // Encontrar offsets que aplican a este producto
+    let totalDescuentoCosto = 0;
+    let tieneOffset = false;
+
+    for (const offset of offsetsVigentes) {
+      let aplica = false;
+
+      if (offset.grupo_id) {
+        // Offset de grupo: verificar contra filtros del grupo
+        const filtros = offsetGrupoFiltros[offset.grupo_id] || [];
+        if (filtros.length > 0) {
+          // Matchea si cumple AL MENOS UN filtro
+          aplica = filtros.some(f => {
+            let match = true;
+            if (f.marca && f.marca !== producto.marca) match = false;
+            if (f.categoria && f.categoria !== producto.categoria) match = false;
+            if (f.subcategoria_id && f.subcategoria_id !== producto.subcategoria_id) match = false;
+            if (f.item_id && f.item_id !== producto.item_id) match = false;
+            return match;
+          });
+        }
+      } else {
+        // Offset individual: matchear por nivel
+        if (offset.item_id && offset.item_id === producto.item_id) aplica = true;
+        else if (offset.subcategoria_id && offset.subcategoria_id === producto.subcategoria_id) aplica = true;
+        else if (offset.categoria && offset.categoria === producto.categoria) aplica = true;
+        else if (offset.marca && offset.marca === producto.marca) aplica = true;
+      }
+
+      if (!aplica) continue;
+
+      tieneOffset = true;
+
+      if (offset.tipo_offset === 'porcentaje_costo') {
+        // Restar porcentaje del costo
+        totalDescuentoCosto += costoARS * ((offset.porcentaje || 0) / 100);
+      } else if (offset.tipo_offset === 'monto_por_unidad') {
+        // Restar monto por unidad (convertir moneda si es USD)
+        const montoARS = offset.moneda === 'USD' && tipoCambioUSD
+          ? (offset.monto || 0) * tipoCambioUSD
+          : (offset.monto || 0);
+        totalDescuentoCosto += montoARS;
+      }
+    }
+
+    if (!tieneOffset || totalDescuentoCosto === 0) return null;
+
+    // Costo ajustado = costo original - descuento de offsets
+    const costoAjustado = costoARS - totalDescuentoCosto;
+    if (costoAjustado <= 0) return null;
+
+    // Recalcular markup: limpio = (markup/100 + 1) * costoOriginal
+    // markup_nuevo = (limpio / costoAjustado - 1) * 100
+    const markupDecimal = producto.markup / 100;
+    const limpio = (markupDecimal + 1) * costoARS;
+    const markupNuevo = ((limpio / costoAjustado) - 1) * 100;
+
+    return Math.round(markupNuevo * 100) / 100;
+  };
+
   // Validación de input numérico
   const isValidNumericInput = (value) => {
     if (value === '' || value === null || value === undefined) return true; // Allow empty
     const num = parseFloat(value);
     return !isNaN(num) && isFinite(num);
+  };
+
+  // Función para consultar el markup sin guardar (usando el endpoint del backend)
+  const consultarMarkup = async (itemId, precio, listaTipo = 'web', pricelistId = null) => {
+    try {
+      // Si no se especifica pricelistId, usar el de clásica por defecto
+      const pricelist_id = pricelistId || (listaTipo === 'pvp' ? 12 : 4);
+      
+      const response = await api.get(
+        '/precios/calcular-markup',
+        {
+          params: {
+            item_id: itemId,
+            precio: precio,
+            pricelist_id: pricelist_id
+          }
+        }
+      );
+      
+      return response.data;
+    } catch {
+      // Si hay error al calcular markup, NO bloquear el guardado
+      // pero mostrar un toast de advertencia
+      showToast('No se pudo validar el markup. Revisa la consola.', 'error');
+      return null;
+    }
   };
 
   const COLORES_DISPONIBLES = [
@@ -975,20 +1115,15 @@ export default function Productos() {
 
   const cambiarColorProducto = async (itemId, color) => {
     try {
-      const token = localStorage.getItem('token');
-      
-      await axios.patch(
-        `${API_URL}/productos/${itemId}/color`,
-        { color },  // Enviar en el body, no en params
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
+      await api.patch(
+        `/productos/${itemId}/color`,
+        { color }
       );
       
       // Actualizar estado local en lugar de recargar
       setProductos(prods => prods.map(p =>
         p.item_id === itemId
-          ? { ...p, color }
+          ? { ...p, color_marcado: color }
           : p
       ));
       
@@ -996,9 +1131,7 @@ export default function Productos() {
       
       // Recargar stats para reflejar cambios en contadores
       cargarStats();
-    } catch (error) {
-      
-      
+    } catch {
       showToast('Error al cambiar el color', 'error');
     }
   };
@@ -1033,16 +1166,12 @@ export default function Productos() {
     }
 
     try {
-      const token = localStorage.getItem('token');
-      await axios.post(
-        `${API_URL}/producto-banlist`,
+      await api.post(
+        '/producto-banlist',
         {
           item_ids: productoBan.item_id ? String(productoBan.item_id) : null,
           eans: productoBan.ean || null,
           motivo: motivoBan || 'Sin motivo especificado'
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` }
         }
       );
 
@@ -1059,6 +1188,30 @@ export default function Productos() {
       
       showToast(`Error: ${error.response?.data?.detail || error.message}`, 'error');
     }
+  };
+
+  const confirmarGuardadoMarkupNegativo = async () => {
+    if (!datosGuardadoPendiente) return;
+
+    // Cerrar modal
+    setMostrarModalMarkupNegativo(false);
+    
+    // Verificar si es cuota o precio clásica
+    if (datosGuardadoPendiente.esCuota) {
+      // Guardar cuota con forzar=true
+      await guardarCuota(
+        datosGuardadoPendiente.itemId, 
+        datosGuardadoPendiente.tipo, 
+        datosGuardadoPendiente.esPVP,
+        true // forzar
+      );
+    } else {
+      // Guardar precio clásica con forzar=true
+      await guardarPrecio(datosGuardadoPendiente.itemId, true);
+    }
+    
+    // Limpiar datos pendientes
+    setDatosGuardadoPendiente(null);
   };
 
   const handleSearchChange = (e) => {
@@ -1079,16 +1232,47 @@ export default function Productos() {
     setCuotaTemp(producto[campoPrecio] || '');
   };
 
-  const guardarCuota = async (itemId, tipo, esPVP = false) => {
+  const guardarCuota = async (itemId, tipo, esPVP = false, forzar = false) => {
     try {
-      const token = localStorage.getItem('token');
       const precioNormalizado = parseFloat(cuotaTemp.toString().replace(',', '.'));
 
-      const response = await axios.post(
-        `${API_URL}/precios/set-cuota`,
+      // Si NO es forzado Y el precio es mayor a 0, verificar markup antes de guardar
+      // (No validar si precio es 0 o inválido)
+      if (!forzar && precioNormalizado > 0) {
+        // Mapeo de tipo de cuota a pricelist_id
+        const pricelistMap = {
+          'web': { '3': 17, '6': 14, '9': 13, '12': 23 },
+          'pvp': { '3': 18, '6': 19, '9': 20, '12': 21 }
+        };
+        const listaTipo = esPVP ? 'pvp' : 'web';
+        const pricelistId = pricelistMap[listaTipo][tipo];
+
+        if (pricelistId) {
+          const markupData = await consultarMarkup(itemId, precioNormalizado, listaTipo, pricelistId);
+          
+          if (markupData && markupData.markup < 0) {
+            // Markup negativo: mostrar modal de confirmación
+            const producto = productos.find(p => p.item_id === itemId);
+            setDatosGuardadoPendiente({
+              itemId,
+              tipo,
+              esPVP,
+              precio: precioNormalizado,
+              producto,
+              markup: markupData.markup,
+              listaTipo,
+              esCuota: true // Flag para identificar que es cuota, no precio clasica
+            });
+            setMostrarModalMarkupNegativo(true);
+            return; // No continuar hasta que el usuario confirme
+          }
+        }
+      }
+
+      const response = await api.post(
+        '/precios/set-cuota',
         null,
         {
-          headers: { Authorization: `Bearer ${token}` },
           params: {
             item_id: itemId,
             tipo_cuota: tipo,
@@ -1135,13 +1319,10 @@ export default function Productos() {
     }
 
     try {
-      const token = localStorage.getItem('token');
-
-      const response = await axios.post(
-        `${API_URL}/precios/recalcular-cuotas`,
+      const response = await api.post(
+        '/precios/recalcular-cuotas',
         null,
         {
-          headers: { Authorization: `Bearer ${token}` },
           params: {
             item_id: producto.item_id,
             lista_tipo: listaTipo
@@ -1191,6 +1372,68 @@ export default function Productos() {
     }
   };
 
+  // Recálculo masivo de cuotas (todas las que matchean filtros)
+  const recalcularCuotasMasivo = async () => {
+    const listaTipo = modoVista === 'pvp' ? 'pvp' : 'web';
+
+    // Construir filtros activos (misma lógica que CalcularPVPModal)
+    const hayFiltros = debouncedSearch || filtroStock !== 'todos' || filtroPrecio !== 'todos' ||
+      marcasSeleccionadas.length > 0 || subcategoriasSeleccionadas.length > 0 ||
+      pmsSeleccionados.length > 0 || filtroRebate || filtroOferta || filtroWebTransf ||
+      filtroTiendaNube || filtroMarkupClasica || filtroMarkupRebate || filtroMarkupOferta ||
+      filtroMarkupWebTransf || filtroOutOfCards || coloresSeleccionados.length > 0 ||
+      filtroMLA || filtroEstadoMLA || filtroNuevos;
+
+    setRecalculandoCuotasMasivo(true);
+    try {
+      const body = { lista_tipo: listaTipo };
+
+      if (hayFiltros) {
+        body.filtros = {};
+        if (debouncedSearch) body.filtros.search = debouncedSearch;
+        if (filtroStock === 'con_stock') body.filtros.con_stock = true;
+        if (filtroStock === 'sin_stock') body.filtros.con_stock = false;
+        if (filtroPrecio === 'con_precio') body.filtros.con_precio = true;
+        if (filtroPrecio === 'sin_precio') body.filtros.con_precio = false;
+        if (marcasSeleccionadas.length > 0) body.filtros.marcas = marcasSeleccionadas.join(',');
+        if (subcategoriasSeleccionadas.length > 0) body.filtros.subcategorias = subcategoriasSeleccionadas.join(',');
+        if (filtroRebate === 'con_rebate') body.filtros.con_rebate = true;
+        if (filtroRebate === 'sin_rebate') body.filtros.con_rebate = false;
+        if (filtroOferta === 'con_oferta') body.filtros.con_oferta = true;
+        if (filtroOferta === 'sin_oferta') body.filtros.con_oferta = false;
+        if (filtroWebTransf === 'con_web_transf') body.filtros.con_web_transf = true;
+        if (filtroWebTransf === 'sin_web_transf') body.filtros.con_web_transf = false;
+        if (filtroOutOfCards === 'con_out_of_cards') body.filtros.out_of_cards = true;
+        if (filtroOutOfCards === 'sin_out_of_cards') body.filtros.out_of_cards = false;
+        if (filtroMarkupClasica === 'positivo') body.filtros.markup_clasica_positivo = true;
+        if (filtroMarkupClasica === 'negativo') body.filtros.markup_clasica_positivo = false;
+        if (coloresSeleccionados.length > 0) body.filtros.colores = coloresSeleccionados.join(',');
+        if (pmsSeleccionados.length > 0) body.filtros.pms = pmsSeleccionados.join(',');
+        if (filtroMLA === 'con_mla') body.filtros.con_mla = true;
+        if (filtroMLA === 'sin_mla') body.filtros.con_mla = false;
+        if (filtroEstadoMLA === 'activa') body.filtros.estado_mla = 'activa';
+        if (filtroEstadoMLA === 'pausada') body.filtros.estado_mla = 'pausada';
+        if (filtroNuevos === 'ultimos_7_dias') body.filtros.nuevos_ultimos_7_dias = true;
+      }
+
+      const response = await api.post('/productos/recalcular-cuotas-masivo', body);
+
+      const { procesados, errores } = response.data;
+      const mensajeErrores = errores > 0 ? ` (${errores} con errores)` : '';
+      showToast(
+        `Cuotas ${listaTipo.toUpperCase()} recalculadas: ${procesados} productos${mensajeErrores}`,
+        errores > 0 ? 'warning' : 'success'
+      );
+
+      cargarProductos();
+      cargarStats();
+    } catch (error) {
+      showToast(`Error al recalcular cuotas masivamente: ${error.response?.data?.detail || error.message}`, 'error');
+    } finally {
+      setRecalculandoCuotasMasivo(false);
+    }
+  };
+
   // Funciones de selección múltiple
   const toggleSeleccion = (itemId, shiftKey) => {
     const nuevaSeleccion = new Set(productosSeleccionados);
@@ -1235,15 +1478,12 @@ export default function Productos() {
 
   const pintarLote = async (color) => {
     try {
-      const token = localStorage.getItem('token');
-
-      await axios.post(
-        `${API_URL}/productos/actualizar-color-lote`,
+      await api.post(
+        '/productos/actualizar-color-lote',
         {
           item_ids: Array.from(productosSeleccionados),
           color: color
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+        }
       );
 
       setProductos(prods => prods.map(p =>
@@ -1254,8 +1494,7 @@ export default function Productos() {
 
       limpiarSeleccion();
       cargarStats();
-    } catch (error) {
-      
+    } catch {
       showToast('Error al actualizar colores en lote', 'error');
     }
   };
@@ -1273,8 +1512,6 @@ export default function Productos() {
 
   const guardarConfigIndividual = async () => {
     try {
-      const token = localStorage.getItem('token');
-
       // Preparar datos: null significa usar global
       const data = {
         recalcular_cuotas_auto: configTemp.recalcular_cuotas_auto === 'null' ? null :
@@ -1286,10 +1523,9 @@ export default function Productos() {
                                             parseFloat(configTemp.markup_adicional_cuotas_pvp_custom)
       };
 
-      const response = await axios.patch(
-        `${API_URL}/productos/${productoConfig.item_id}/config-cuotas`,
-        data,
-        { headers: { Authorization: `Bearer ${token}` } }
+      const response = await api.patch(
+        `/productos/${productoConfig.item_id}/config-cuotas`,
+        data
       );
 
       // Actualizar producto en el estado
@@ -1318,15 +1554,14 @@ export default function Productos() {
     }
   };
 
-  const guardarPrecio = async (itemId) => {
+  const guardarPrecio = async (itemId, forzar = false) => {
     try {
-      const token = localStorage.getItem('token');
       // Normalizar: reemplazar coma por punto
       const precioNormalizado = parseFloat(precioTemp.toString().replace(',', '.'));
       
-      // Validar que sea un número válido
-      if (!isValidNumericInput(precioNormalizado) || precioNormalizado <= 0) {
-        showToast('El precio debe ser un número válido mayor a 0', 'error');
+      // Validar que sea un número válido (permitir 0 para borrar)
+      if (!isValidNumericInput(precioNormalizado) || precioNormalizado < 0) {
+        showToast('El precio debe ser un número válido mayor o igual a 0', 'error');
         return;
       }
 
@@ -1336,13 +1571,31 @@ export default function Productos() {
         ? producto.recalcular_cuotas_auto 
         : recalcularCuotasAuto;
 
+      // Si NO es forzado Y el precio es mayor a 0, verificar markup antes de guardar
+      // (No validar si precio es 0 porque es para borrar precios)
+      if (!forzar && precioNormalizado > 0) {
+        const markupData = await consultarMarkup(itemId, precioNormalizado, modoVista === 'pvp' ? 'pvp' : 'web');
+        
+        if (markupData && markupData.markup < 0) {
+          // Markup negativo: mostrar modal de confirmación
+          setDatosGuardadoPendiente({
+            itemId,
+            precio: precioNormalizado,
+            producto,
+            markup: markupData.markup,
+            listaTipo: modoVista === 'pvp' ? 'pvp' : 'web'
+          });
+          setMostrarModalMarkupNegativo(true);
+          return; // No continuar hasta que el usuario confirme
+        }
+      }
+
       // Si estamos en modo PVP, usar set-rapido con lista_tipo=pvp
       if (modoVista === 'pvp') {
-        const response = await axios.post(
-          `${API_URL}/precios/set-rapido`,
+        const response = await api.post(
+          '/precios/set-rapido',
           null,
           {
-            headers: { Authorization: `Bearer ${token}` },
             params: {
               item_id: itemId,
               precio: precioNormalizado,
@@ -1403,11 +1656,10 @@ export default function Productos() {
       }
 
       // Modo web (comportamiento original)
-      const response = await axios.post(
-        `${API_URL}/precios/set-rapido`,
+      const response = await api.post(
+        '/precios/set-rapido',
         null,  // No body needed, all params go in URL
         {
-          headers: { Authorization: `Bearer ${token}` },
           params: {
             item_id: itemId,
             precio: precioNormalizado,
@@ -1472,14 +1724,13 @@ export default function Productos() {
 
       setEditandoPrecio(null);
       cargarStats();
-    } catch (error) {
+    } catch {
       showToast('Error al guardar precio', 'error');
     }
   };
 
   const guardarRebate = async (itemId) => {
     try {
-      const token = localStorage.getItem('token');
       // Normalizar: reemplazar coma por punto
       const porcentajeNormalizado = parseFloat(rebateTemp.porcentaje.toString().replace(',', '.'));
 
@@ -1489,13 +1740,12 @@ export default function Productos() {
         return;
       }
       
-      await axios.patch(
-        `${API_URL}/productos/${itemId}/rebate`,
+      await api.patch(
+        `/productos/${itemId}/rebate`,
         {
           participa_rebate: rebateTemp.participa,
           porcentaje_rebate: porcentajeNormalizado
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+        }
       );
 
       setProductos(prods => prods.map(p =>
@@ -1512,8 +1762,7 @@ export default function Productos() {
       ));
 
       setEditandoRebate(null);
-    } catch (error) {
-      
+    } catch {
       showToast('Error al guardar rebate', 'error');
     }
   };
@@ -1530,33 +1779,27 @@ export default function Productos() {
 
   const cargarUsuariosAuditoria = async () => {
     try {
-      const response = await axios.get(`${API_URL}/auditoria/usuarios`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
+      const response = await api.get('/auditoria/usuarios');
       setUsuarios(response.data.usuarios);
-    } catch (error) {
+    } catch {
       showToast('Error al cargar usuarios', 'error');
     }
   };
 
   const cargarTiposAccion = async () => {
     try {
-      const response = await axios.get(`${API_URL}/auditoria/tipos-accion`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
+      const response = await api.get('/auditoria/tipos-accion');
       setTiposAccion(response.data.tipos);
-    } catch (error) {
+    } catch {
       showToast('Error al cargar tipos de acción', 'error');
     }
   };
 
   const cargarPMs = async () => {
     try {
-      const response = await axios.get(`${API_URL}/usuarios/pms?solo_con_marcas=true`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
+      const response = await api.get('/usuarios/pms?solo_con_marcas=true');
       setPms(response.data);
-    } catch (error) {
+    } catch {
       showToast('Error al cargar PMs', 'error');
     }
   };
@@ -1902,13 +2145,12 @@ export default function Productos() {
           
           // Si ya estamos editando este producto, desactivar rebate y cerrar edición
           if (editandoRebate === producto.item_id) {
-            await axios.patch(
-              `${API_URL}/productos/${producto.item_id}/rebate`,
+            await api.patch(
+              `/productos/${producto.item_id}/rebate`,
               {
                 participa_rebate: false,
                 porcentaje_rebate: producto.porcentaje_rebate || 3.8
-              },
-              { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+              }
             );
             
             // Actualizar estado local en lugar de recargar
@@ -1949,10 +2191,9 @@ export default function Productos() {
           
           // Si ya estamos editando Y el producto tiene out_of_cards, desactivarlo
           if (editandoRebate === producto.item_id && producto.out_of_cards) {
-            await axios.patch(
-              `${API_URL}/productos/${producto.item_id}/out-of-cards`,
-              { out_of_cards: false },
-              { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+            await api.patch(
+              `/productos/${producto.item_id}/out-of-cards`,
+              { out_of_cards: false }
             );
             
             // Actualizar estado local en lugar de recargar
@@ -2031,25 +2272,22 @@ export default function Productos() {
 
   const cambiarColorRapido = async (itemId, color) => {
     try {
-      
-      await axios.patch(
-        `${API_URL}/productos/${itemId}/color`,
-        { color },
-        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      await api.patch(
+        `/productos/${itemId}/color`,
+        { color }
       );
       
       // Actualizar estado local en lugar de recargar
       setProductos(prods => prods.map(p =>
         p.item_id === itemId
-          ? { ...p, color }
+          ? { ...p, color_marcado: color }
           : p
       ));
       
       // Recargar stats para reflejar cambios en contadores
       cargarStats();
-    } catch (error) {
-      
-      
+    } catch {
+      // silenced
     }
   };
 
@@ -2057,13 +2295,12 @@ export default function Productos() {
     try {
       // Si el rebate está desactivado, activarlo y abrir modo edición
       if (!producto.participa_rebate) {
-        const response = await axios.patch(
-          `${API_URL}/productos/${producto.item_id}/rebate`,
+        const response = await api.patch(
+          `/productos/${producto.item_id}/rebate`,
           {
             participa_rebate: true,
             porcentaje_rebate: producto.porcentaje_rebate || 3.8
-          },
-          { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+          }
         );
 
         // Actualizar estado local en lugar de recargar
@@ -2099,13 +2336,12 @@ export default function Productos() {
         cargarStats();
       } else {
         // Si está activado, desactivarlo
-        const response = await axios.patch(
-          `${API_URL}/productos/${producto.item_id}/rebate`,
+        await api.patch(
+          `/productos/${producto.item_id}/rebate`,
           {
             participa_rebate: false,
             porcentaje_rebate: producto.porcentaje_rebate || 3.8
-          },
-          { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+          }
         );
         
         // Actualizar estado local en lugar de recargar
@@ -2128,20 +2364,19 @@ export default function Productos() {
         // Recargar stats para reflejar cambios en contadores
         cargarStats();
       }
-    } catch (error) {
+    } catch {
       showToast('Error al cambiar rebate', 'error');
     }
   };
 
   const toggleWebTransfRapido = async (producto) => {
     try {
-      const response = await axios.patch(
-        `${API_URL}/productos/${producto.item_id}/web-transferencia`,
+      const response = await api.patch(
+        `/productos/${producto.item_id}/web-transferencia`,
         {
           participa: !producto.participa_web_transferencia,
           porcentaje: producto.porcentaje_markup_web || 6.0
-        },
-        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+        }
       );
       
       // Actualizar estado local en lugar de recargar
@@ -2158,7 +2393,7 @@ export default function Productos() {
       
       // Recargar stats para reflejar cambios en contadores
       cargarStats();
-    } catch (error) {
+    } catch {
       showToast('Error al cambiar Web/Transferencia', 'error');
     }
   };
@@ -2167,10 +2402,9 @@ export default function Productos() {
     try {
       // Si ya tiene out_of_cards, desactivarlo
       if (producto.out_of_cards) {
-        await axios.patch(
-          `${API_URL}/productos/${producto.item_id}/out-of-cards`,
-          { out_of_cards: false },
-          { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+        await api.patch(
+          `/productos/${producto.item_id}/out-of-cards`,
+          { out_of_cards: false }
         );
         
         // Actualizar estado local en lugar de recargar
@@ -2194,21 +2428,19 @@ export default function Productos() {
       // Primero, si el rebate NO está activo, activarlo
       let rebateResponse = null;
       if (!producto.participa_rebate) {
-        rebateResponse = await axios.patch(
-          `${API_URL}/productos/${producto.item_id}/rebate`,
+        rebateResponse = await api.patch(
+          `/productos/${producto.item_id}/rebate`,
           {
             participa_rebate: true,
             porcentaje_rebate: producto.porcentaje_rebate || 3.8
-          },
-          { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+          }
         );
       }
 
       // Marcar out_of_cards = true
-      await axios.patch(
-        `${API_URL}/productos/${producto.item_id}/out-of-cards`,
-        { out_of_cards: true },
-        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      await api.patch(
+        `/productos/${producto.item_id}/out-of-cards`,
+        { out_of_cards: true }
       );
 
       // Actualizar estado local en lugar de recargar
@@ -2245,7 +2477,7 @@ export default function Productos() {
 
       // Recargar stats para reflejar cambios en contadores
       cargarStats();
-    } catch (error) {
+    } catch {
       showToast('Error al cambiar Out of Cards', 'error');
     }
   };
@@ -2360,7 +2592,7 @@ export default function Productos() {
         />
 
         <StatCard
-          label="🔍 Sin MLA"
+          label="Sin MLA"
           subItems={[
             {
               label: 'Total:',
@@ -2521,7 +2753,7 @@ export default function Productos() {
 
           <button
             onClick={limpiarTodosFiltros}
-            className="filter-button clear-all"
+            className="btn-tesla outline-subtle-danger sm"
             title="Limpiar todos los filtros"
           >
             Limpiar
@@ -2546,21 +2778,19 @@ export default function Productos() {
             }}
             title="Alt+V para ciclar vistas | Alt+P para ir directo a PVP"
           >
-            {modoVista === 'normal' && '📋 Normal'}
+            {modoVista === 'normal' && 'Normal'}
             {modoVista === 'cuotas' && '📊 Cuotas'}
             {modoVista === 'pvp' && '💰 PVP'}
           </button>
 
           {/* Auto-recalcular */}
-          <label className="filter-checkbox-label">
-            <input
-              type="checkbox"
-              checked={recalcularCuotasAuto}
-              onChange={(e) => setRecalcularCuotasAuto(e.target.checked)}
-              className="filter-checkbox"
-            />
-            <span className="filter-checkbox-text">♻️ Auto-recalcular</span>
-          </label>
+          <button
+            onClick={() => setRecalcularCuotasAuto(!recalcularCuotasAuto)}
+            className={`btn-tesla outline-subtle-primary sm ${recalcularCuotasAuto ? 'toggle-active' : ''}`}
+            title="Alt+R para toggle"
+          >
+            {recalcularCuotasAuto ? '✓ ' : ''}Auto-recalcular
+          </button>
 
           {/* Separador visual */}
           <div className="filter-separator"></div>
@@ -2568,28 +2798,39 @@ export default function Productos() {
           {/* Botones de Exportar y Calcular */}
           <button
             onClick={() => setMostrarExportModal(true)}
-            className="btn-action export"
+            className="btn-tesla outline-subtle-success sm"
           >
-            <img src={xlsIcon} alt="Excel" />
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2z"/></svg>
             Exportar
           </button>
 
           {puedeCalcularWebMasivo && (
           <button
             onClick={() => setMostrarCalcularWebModal(true)}
-            className="btn-action calculate"
+            className="btn-tesla outline-subtle-primary sm"
           >
-            🧮 Calcular Web Transf.
+            Calcular Web Transf.
           </button>
           )}
 
           {puedeCalcularPVPMasivo && (
           <button
             onClick={() => setMostrarCalcularPVPModal(true)}
-            className="btn-action calculate"
+            className="btn-tesla outline-subtle-primary sm"
             title="Calcular precios PVP masivamente (Ctrl+Shift+P)"
           >
-            🔮 Calcular PVP
+            Calcular PVP
+          </button>
+          )}
+
+          {(modoVista === 'cuotas' || modoVista === 'pvp') && puedeEditarCuotas && (
+          <button
+            onClick={recalcularCuotasMasivo}
+            className="btn-tesla outline-subtle-primary sm"
+            disabled={recalculandoCuotasMasivo}
+            title="Recalcula cuotas desde el precio base existente para todos los productos filtrados"
+          >
+            {recalculandoCuotasMasivo ? 'Recalculando...' : `Recalcular Cuotas ${modoVista === 'pvp' ? 'PVP' : 'Web'}`}
           </button>
           )}
         </div>
@@ -2609,7 +2850,7 @@ export default function Productos() {
                         setMarcasSeleccionadas([]);
                         setPage(1);
                       }}
-                      className="btn-clear-all"
+                      className="btn-tesla outline-subtle-danger sm"
                     >
                       Limpiar filtros ({marcasSeleccionadas.length})
                     </button>
@@ -2673,7 +2914,7 @@ export default function Productos() {
                         e.stopPropagation();
                         setSubcategoriasSeleccionadas([]);
                       }}
-                      className="btn-clear-all"
+                      className="btn-tesla outline-subtle-danger sm"
                     >
                       Limpiar
                     </button>
@@ -2822,7 +3063,7 @@ export default function Productos() {
                         setPmsSeleccionados([]);
                         setPage(1);
                       }}
-                      className="btn-clear-all"
+                      className="btn-tesla outline-subtle-danger sm"
                     >
                       Limpiar filtros ({pmsSeleccionados.length})
                     </button>
@@ -2875,7 +3116,7 @@ export default function Productos() {
                       });
                       setPage(1);
                     }}
-                    className="btn-clear-all"
+                    className="btn-tesla outline-subtle-danger sm"
                   >
                     Limpiar Todo
                   </button>
@@ -3024,7 +3265,7 @@ export default function Productos() {
                 setColoresSeleccionados([]);
                 setPage(1);
               }}
-              className="btn-clear-all"
+              className="btn-tesla outline-subtle-danger sm"
             >
               Limpiar Todos
             </button>
@@ -3049,7 +3290,7 @@ export default function Productos() {
                 </div>
 
                 <div className="filter-item">
-                  <label>🏷️ Mejor Oferta</label>
+                  <label>Mejor Oferta</label>
                   <select
                     value={filtroOferta || 'todos'}
                     onChange={(e) => { setFiltroOferta(e.target.value === 'todos' ? null : e.target.value); setPage(1); }}
@@ -3082,14 +3323,14 @@ export default function Productos() {
                     className="filter-select-compact"
                   >
                     <option value="todos">Todos</option>
-                    <option value="con_descuento">🏷️ Con Descuento</option>
+                    <option value="con_descuento">Con Descuento</option>
                     <option value="sin_descuento">💵 Sin Descuento</option>
                     <option value="no_publicado">📦 No Publicado</option>
                   </select>
                 </div>
 
                 <div className="filter-item">
-                  <label>🚫 Out of Cards</label>
+                  <label>Out of Cards</label>
                   <select
                     value={filtroOutOfCards || 'todos'}
                     onChange={(e) => { setFiltroOutOfCards(e.target.value === 'todos' ? null : e.target.value); setPage(1); }}
@@ -3163,10 +3404,10 @@ export default function Productos() {
 
             {/* Filtros de Estado */}
             <div className="filter-group">
-              <div className="filter-group-title">📋 Filtros de Estado</div>
+              <div className="filter-group-title">Filtros de Estado</div>
               <div className="filter-group-content">
                 <div className="filter-item">
-                  <label>🔍 MercadoLibre</label>
+                  <label>MercadoLibre</label>
                   <select
                     value={filtroMLA || 'todos'}
                     onChange={(e) => { setFiltroMLA(e.target.value === 'todos' ? null : e.target.value); setPage(1); }}
@@ -3226,7 +3467,7 @@ export default function Productos() {
 
             {/* Filtros de Color */}
             <div className="filter-group">
-              <div className="filter-group-title">🎨 Marcado por Color</div>
+              <div className="filter-group-title">Marcado por Color</div>
               <div className="filter-group-content color-filter-container">
                 {COLORES_DISPONIBLES.map(c => (
                   <label
@@ -3262,7 +3503,7 @@ export default function Productos() {
                       className="color-checkbox-hidden"
                     />
                     {coloresSeleccionados.includes(c.id === null ? 'sin_color' : c.id) && <span className="color-checkmark">✓</span>}
-                    {c.id === null && !coloresSeleccionados.includes('sin_color') && <span className="color-checkmark">🚫</span>}
+                    {c.id === null && !coloresSeleccionados.includes('sin_color') && <span className="color-checkmark">✕</span>}
                   </label>
                 ))}
               </div>
@@ -3432,7 +3673,7 @@ export default function Productos() {
                         >
                           {p.catalog_status === 'winning' ? '🏆' :
                            p.catalog_status === 'sharing_first_place' ? '🤝' :
-                           p.catalog_status === 'competing' ? '⚠️' :
+                           p.catalog_status === 'competing' ? '!' :
                            ''}
                         </span>
                       )}
@@ -3494,11 +3735,25 @@ export default function Productos() {
                               </div>
                             )
                           ) : (
-                            p.markup !== null && p.markup !== undefined && (
-                              <div className="markup-display" style={{ color: getMarkupColor(p.markup) }}>
-                                {p.markup}%
-                              </div>
-                            )
+                            <>
+                              {p.markup !== null && p.markup !== undefined && (
+                                <div className="markup-display" style={{ color: getMarkupColor(p.markup) }}>
+                                  {p.markup}%
+                                  {(() => {
+                                    const mkOffset = calcularMarkupConOffset(p);
+                                    if (mkOffset === null) return null;
+                                    return (
+                                      <span
+                                        className="markup-offset-display"
+                                        title="Markup con offsets aplicados"
+                                      >
+                                        → {mkOffset.toFixed(2)}%
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
+                              )}
+                            </>
                           )}
                         </div>
                       )}
@@ -3585,10 +3840,9 @@ export default function Productos() {
                                     e.stopPropagation();
                                     const nuevoValor = e.target.checked;
                                     try {
-                                      await axios.patch(
-                                        `${API_URL}/productos/${p.item_id}/out-of-cards`,
-                                        { out_of_cards: nuevoValor },
-                                        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+                                      await api.patch(
+                                        `/productos/${p.item_id}/out-of-cards`,
+                                        { out_of_cards: nuevoValor }
                                       );
                                       
                                       // Actualizar estado local en lugar de recargar
@@ -4062,54 +4316,54 @@ export default function Productos() {
                     )}
 
                     <td className="table-actions">
-                      <div className="table-actions-group">
+                       <div className="table-actions-group">
                         <button
                           onClick={() => {
                             setProductoInfo(p.item_id);
                             setMostrarModalInfo(true);
                           }}
-                          className="icon-button info"
+                          className="btn-tesla outline-subtle-primary icon-only sm"
                           title="Información detallada (Ctrl+I)"
                         >
-                          ℹ️
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
                         </button>
                         {puedeEditar && (
                           <button
                             onClick={() => setProductoSeleccionado(p)}
-                            className="icon-button detail"
+                            className="btn-tesla outline-subtle-primary icon-only sm"
                             title="Ver detalle"
                             aria-label="Ver detalle del producto"
                           >
-                            🔍
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
                           </button>
                         )}
                         <button
                           onClick={() => verAuditoria(p.item_id)}
-                          className="icon-button audit"
+                          className="btn-tesla outline-subtle-primary icon-only sm"
                           title="Ver historial de cambios"
                           aria-label="Ver historial de cambios"
                         >
-                          📋
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
                         </button>
                         {puedeEditar && (
                           <button
                             onClick={() => abrirModalConfig(p)}
-                            className="icon-button config"
+                            className="btn-tesla outline-subtle-primary icon-only sm"
                             title="Configuración de cuotas"
                             aria-label="Configuración de cuotas"
                           >
-                            ⚙️
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94L14.4 2.81c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
                           </button>
                         )}
                         {puedeMarcarColor && (
                         <div style={{ position: 'relative', display: 'inline-block' }}>
                           <button
                             onClick={() => setColorDropdownAbierto(colorDropdownAbierto === p.item_id ? null : p.item_id)}
-                            className="icon-button color"
+                            className="btn-tesla outline-subtle-primary icon-only sm"
                             title="Marcar con color"
                             aria-label="Marcar producto con color"
                           >
-                            🎨
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
                           </button>
                           {colorDropdownAbierto === p.item_id && (
                             <div className="color-dropdown">
@@ -4136,11 +4390,10 @@ export default function Productos() {
                         {['SUPERADMIN', 'ADMIN'].includes(user?.rol) && (
                           <button
                             onClick={() => abrirModalBan(p)}
-                            className="icon-button ban"
+                            className="btn-tesla outline-subtle-danger icon-only sm"
                             title="Agregar a banlist"
-                            style={{ color: 'var(--error)' }}
                           >
-                            🚫
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
                           </button>
                         )}
                       </div>
@@ -4155,7 +4408,7 @@ export default function Productos() {
               <div className="modal-overlay">
                 <div className="modal-content modal-auditoria">
                   <div className="modal-header">
-                    <h2>📋 Historial de Cambios</h2>
+                    <h2>Historial de Cambios</h2>
                     <button onClick={() => setAuditoriaVisible(false)} className="modal-close">
                       Cerrar
                     </button>
@@ -4183,7 +4436,7 @@ export default function Productos() {
                               'activar_rebate': '✅ Activar Rebate',
                               'desactivar_rebate': '❌ Desactivar Rebate',
                               'modificar_porcentaje_rebate': '📊 % Rebate',
-                              'marcar_out_of_cards': '🚫 Out of Cards ON',
+                              'marcar_out_of_cards': 'Out of Cards ON',
                               'desmarcar_out_of_cards': '✅ Out of Cards OFF',
                               'activar_web_transferencia': '✅ Web Transf. ON',
                               'desactivar_web_transferencia': '❌ Web Transf. OFF',
@@ -4228,17 +4481,23 @@ export default function Productos() {
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="pagination-btn"
+                className="btn-tesla outline-subtle-primary"
               >
-                ← Anterior
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: '4px' }}>
+                  <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                </svg>
+                Anterior
               </button>
-              <span>Página {page} {totalProductos > 0 && `(${((page-1)*pageSize + 1)} - ${Math.min(page*pageSize, totalProductos)})`}</span>
+              <span className="pagination-info">Página {page} {totalProductos > 0 && `(1 - ${pageSize} de ${totalProductos.toLocaleString('es-AR')})`}</span>
               <button
                 onClick={() => setPage(p => p + 1)}
                 disabled={productos.length < pageSize}
-                className="pagination-btn"
+                className="btn-tesla outline-subtle-primary"
               >
-                Siguiente →
+                Siguiente
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: '4px' }}>
+                  <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+                </svg>
               </button>
             </div>
           </>
@@ -4371,7 +4630,7 @@ export default function Productos() {
       {mostrarModalBan && productoBan && (
         <div className="modal-ban-overlay">
           <div className="modal-ban-content">
-            <h2 className="modal-ban-title">⚠️ Confirmar Ban</h2>
+            <h2 className="modal-ban-title">Confirmar Ban</h2>
 
             <div className="modal-ban-info">
               <p><strong>Producto:</strong> {productoBan.codigo}</p>
@@ -4431,6 +4690,58 @@ export default function Productos() {
         </div>
       )}
 
+      {/* Modal de confirmación markup negativo */}
+      {mostrarModalMarkupNegativo && datosGuardadoPendiente && (
+        <div className="modal-ban-overlay">
+          <div className="modal-ban-content" style={{maxWidth: '600px'}}>
+            <h2 className="modal-ban-title" style={{color: 'var(--error)'}}>⚠️ MarkUp Negativo</h2>
+
+            <div className="modal-ban-info">
+              <p><strong>Producto:</strong> {datosGuardadoPendiente.producto.descripcion}</p>
+              <p><strong>Código:</strong> {datosGuardadoPendiente.producto.codigo}</p>
+              <p><strong>Marca:</strong> {datosGuardadoPendiente.producto.marca}</p>
+              {datosGuardadoPendiente.esCuota && (
+                <p><strong>Tipo:</strong> Precio {datosGuardadoPendiente.tipo} cuotas{datosGuardadoPendiente.esPVP ? ' (PVP)' : ''}</p>
+              )}
+              {!datosGuardadoPendiente.esCuota && (
+                <p><strong>Tipo:</strong> Precio Clásica{datosGuardadoPendiente.listaTipo === 'pvp' ? ' (PVP)' : ''}</p>
+              )}
+            </div>
+
+            <div className="modal-ban-warning" style={{backgroundColor: 'var(--error-bg)', borderColor: 'var(--error)', marginTop: '20px'}}>
+              <p style={{fontSize: '1.1em', marginBottom: '10px'}}>
+                ¿Está seguro que quiere guardar el producto <strong>{datosGuardadoPendiente.producto.descripcion}</strong> con un <strong>MarkUp Negativo</strong> del:
+              </p>
+              <p style={{fontSize: '2em', fontWeight: 'bold', color: 'var(--error)', margin: '10px 0'}}>
+                {datosGuardadoPendiente.markup.toFixed(2)}%
+              </p>
+              <p style={{fontSize: '0.95em', color: 'var(--text-secondary)', marginTop: '10px'}}>
+                Esto significa que el precio de venta está por debajo del costo + comisiones.
+              </p>
+            </div>
+
+            <div className="config-modal-actions">
+              <button
+                onClick={() => {
+                  setMostrarModalMarkupNegativo(false);
+                  setDatosGuardadoPendiente(null);
+                  // No limpiar editandoPrecio/editandoCuota para que el usuario pueda corregir el precio
+                }}
+                className="btn-tesla secondary"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarGuardadoMarkupNegativo}
+                className="btn-tesla outline-subtle-danger"
+              >
+                Guardar de todas formas
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Barra de acciones flotante para selección múltiple */}
       {productosSeleccionados.size > 0 && (
         <div className="selection-bar">
@@ -4467,7 +4778,7 @@ export default function Productos() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className={`shortcuts-header ${modoVista === 'pvp' ? 'config-header-pvp' : ''}`}>
-              <h2>⚙️ Configuración de Cuotas {modoVista === 'pvp' ? 'PVP' : 'Web'}</h2>
+              <h2>Configuración de Cuotas {modoVista === 'pvp' ? 'PVP' : 'Web'}</h2>
               <button onClick={() => setMostrarModalConfig(false)} className="close-btn">✕</button>
             </div>
             <div className="config-modal-content">
@@ -4518,7 +4829,7 @@ export default function Productos() {
                 <button onClick={() => setMostrarModalConfig(false)} className="btn-tesla secondary">
                   Cancelar
                 </button>
-                <button onClick={guardarConfigIndividual} className="btn-tesla primary">
+                <button onClick={guardarConfigIndividual} className="btn-tesla outline-subtle-primary">
                   Guardar
                 </button>
               </div>
@@ -4532,7 +4843,7 @@ export default function Productos() {
         <div className="shortcuts-modal-overlay" onClick={() => setMostrarShortcutsHelp(false)}>
           <div className="shortcuts-modal" onClick={(e) => e.stopPropagation()}>
             <div className="shortcuts-header">
-              <h2>⌨️ Atajos de Teclado</h2>
+              <h2>Atajos de Teclado</h2>
               <button onClick={() => setMostrarShortcutsHelp(false)} className="close-btn">✕</button>
             </div>
             <div className="shortcuts-content">
@@ -4653,7 +4964,7 @@ export default function Productos() {
               </div>
 
               <div className="shortcuts-section">
-                <h3>🔍 Operadores de Búsqueda</h3>
+                <h3>Operadores de Búsqueda</h3>
                 <div className="shortcut-item">
                   <kbd>ean:123456</kbd>
                   <span>Búsqueda exacta por EAN</span>
@@ -4723,7 +5034,7 @@ export default function Productos() {
       {/* Indicador de modo navegación */}
       {modoNavegacion && (
         <div className="navigation-indicator">
-          ⌨️ Modo Navegación Activo - Presiona <kbd>Esc</kbd> para salir o <kbd>?</kbd> para ayuda
+          Modo Navegación Activo - Presiona <kbd>Esc</kbd> para salir o <kbd>?</kbd> para ayuda
         </div>
       )}
 
