@@ -799,7 +799,7 @@ export default function Productos() {
           <button
             onClick={() => setMostrarMarkupMasivoModal(true)}
             className="btn-tesla outline-subtle-primary sm"
-            title="Acciones masivas sobre los productos visibles (markup ML y config de cuotas)"
+            title="Acciones masivas sobre el conjunto filtrado (markup ML y config de cuotas)"
           >
             Acciones masivas
           </button>
@@ -2715,7 +2715,40 @@ export default function Productos() {
             cargarProductos();
             cargarStats();
           }}
-          productos={productosOrdenados}
+          filtrosActivos={{
+            search: debouncedSearch,
+            con_stock: filtroStock === 'con_stock' ? true : filtroStock === 'sin_stock' ? false : null,
+            con_precio: filtroPrecio === 'con_precio' ? true : filtroPrecio === 'sin_precio' ? false : null,
+            marcas: marcasSeleccionadas,
+            subcategorias: subcategoriasSeleccionadas,
+            pmsSeleccionados,
+            filtroRebate,
+            filtroOferta,
+            filtroWebTransf,
+            filtroTiendaNube,
+            filtroMarkupClasica,
+            filtroMarkupRebate,
+            filtroMarkupOferta,
+            filtroMarkupWebTransf,
+            filtroOutOfCards,
+            filtroMLA,
+            filtroEstadoMLA,
+            filtroNuevos,
+            filtroTiendaOficial,
+            coloresSeleccionados,
+            equipoActivoId,
+            equipoActivoNombre,
+            promo_tipos: filtroPromoTipos.length > 0 ? filtroPromoTipos.join(',') : null,
+            promo_estado: filtroPromoTipos.length > 0 ? filtroPromoEstado : null,
+            con_promo_aplicada: filtroPromoTipos.length === 0 && filtroPromoEstado === 'aplicada' ? true : null,
+            con_promo_sin_aplicar: filtroPromoTipos.length === 0 && filtroPromoEstado === 'sin_aplicar' ? true : null,
+            filtroPxq,
+            audit_usuarios: filtrosAuditoria.usuarios,
+            audit_tipos_accion: filtrosAuditoria.tipos_accion,
+            audit_fecha_desde: filtrosAuditoria.fecha_desde,
+            audit_fecha_hasta: filtrosAuditoria.fecha_hasta,
+          }}
+          totalProductos={totalProductos}
           showToast={showToast}
           puedeEditarCuotas={puedeEditarCuotas}
         />
