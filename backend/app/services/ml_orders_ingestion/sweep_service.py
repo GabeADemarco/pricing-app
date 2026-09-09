@@ -56,7 +56,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from decimal import Decimal, InvalidOperation
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
 from sqlalchemy.exc import IntegrityError
 
@@ -71,6 +72,9 @@ from app.models.ml_orders_ops import (
 )
 from app.services.ml_orders_ingestion.ingestion_service import UpsertOutcome, upsert_order, upsert_shipment
 from app.services.ml_orders_ingestion.mapper import MappingError, map_order
+from app.services.ml_payments_ingestion.ingestion_service import upsert_payment
+from app.services.ml_payments_ingestion.mapper import MappingError as PaymentMappingError
+from app.services.ml_payments_ingestion.mapper import map_payment
 from app.services.ml_webhook_client import ml_webhook_client
 from app.utils.async_bridge import resolve_maybe_async
 
@@ -105,11 +109,59 @@ MIN_BISECT_SPAN = timedelta(minutes=1)
 # next pass resumes instead of starting over.
 MAX_WINDOW_FETCHES_PER_PASS = 2000
 
+# ml-ventas-desglose-costos corte 4: separate allowance for
+# `get_shipment_costs`. Kept apart from `MAX_WINDOW_FETCHES_PER_PASS`
+# (search pages + `get_shipment`) on purpose -- a first pass after this
+# cut can find thousands of already-ingested shipments with
+# `costs_synced_at IS NULL`, and letting cost sync compete with page
+# walking for the same shared budget would starve order ingestion itself
+# on that first pass. Each unsynced shipment is one extra HTTP call
+# (`get_shipment_costs`), so this caps that pass's added HTTP cost while
+# still guaranteeing forward progress every 10-minute run: at 500/pass a
+# backlog of a few thousand terminal shipments drains within a handful of
+# passes, not one.
+MAX_COST_FETCHES_PER_PASS = 500
+
+# ml-ventas-desglose-costos corte 5: separate allowance for `get_payment`.
+# Kept apart from the other two budgets for the same reason as
+# `MAX_COST_FETCHES_PER_PASS`: a backlog on one HTTP-bound step must
+# never starve another step's own budget on the same pass. No live rate
+# limit was found on this endpoint (514 payments fetched back-to-back,
+# zero 429s) -- this cap exists for pass-shape symmetry with the other
+# two, not because ML throttles it.
+MAX_PAYMENT_FETCHES_PER_PASS = 500
+
 # A 'running' lock older than this is assumed to belong to a dead process
 # and is reclaimed rather than blocking the sweep forever. Well above the
 # 10-minute cron cadence so a legitimately slow (e.g. cold-start) pass is
 # never mistaken for a stale one.
 STALE_LOCK_TIMEOUT = timedelta(minutes=30)
+
+# A WALL-CLOCK ceiling for the whole pass, above any call budget.
+#
+# `run_sweep`'s comment used to say there was ONE budget because "two
+# separate budgets would each stay under their own limit while the pass as a
+# whole ran far past the stale-lock timeout". Corte 4 added exactly that
+# second budget -- for a good reason, starving the order walk -- and so
+# reopened the other side: 2000 + 500 sequential calls against a lock
+# reclaimed after 30 minutes, and two sweeps on one cursor.
+#
+# Counting calls cannot close that; every new budget reopens it. The limit
+# belongs where the risk is, which is the clock. Checked in EVERY fetch loop
+# -- the page walk, the shipment lookups and the cost sync -- because a slow
+# proxy blows the deadline on the page walk alone, long before the cost
+# section is ever reached.
+PASS_DEADLINE_MARGIN = timedelta(minutes=5)
+PASS_TIME_BUDGET = STALE_LOCK_TIMEOUT - PASS_DEADLINE_MARGIN
+
+
+def _pass_deadline_reached(started_at: Optional[datetime]) -> bool:
+    """True once the pass has spent its time. `None` disables the cutoff,
+    for tests that do not exercise it."""
+    if started_at is None:
+        return False
+    return datetime.now(timezone.utc) - started_at >= PASS_TIME_BUDGET
+
 
 CURSOR_NAME = "sweep"
 OUT_OF_WINDOW_KIND = "out_of_window_update"
@@ -135,6 +187,10 @@ class SweepResult:
     orders_mapping_error: int = 0
     orders_out_of_window: int = 0
     windows_unenumerable: int = 0
+    # Without this there is no way to see from outside whether the cost
+    # backlog is draining or spending its budget every pass without moving.
+    shipment_costs_synced: int = 0
+    payments_synced: int = 0
     budget_exhausted: bool = False
     error: Optional[str] = None
 
@@ -164,10 +220,16 @@ def iter_window_events(
     date_from: datetime,
     date_to: datetime,
     budget: Optional[List[int]] = None,
+    started_at: Optional[datetime] = None,
 ) -> Iterator[Tuple[str, Any]]:
     if budget is None:
         budget = [MAX_WINDOW_FETCHES_PER_PASS]
-    if budget[0] <= 0:
+    # The clock counts here too, not only in the cost sync. A slow proxy
+    # blows the deadline on the page walk alone -- 2000 pages at 1.2s is 40
+    # minutes against a lock reclaimed at 30 -- long before the cost
+    # section is ever reached. Same signal as an exhausted budget, so the
+    # cursor does not advance past what was actually read.
+    if budget[0] <= 0 or _pass_deadline_reached(started_at):
         yield ("budget_exhausted", date_from, date_to)
         return
     budget[0] -= 1
@@ -194,8 +256,8 @@ def iter_window_events(
             yield ("checkpoint", date_to)
             return
         midpoint = date_from + span / 2
-        yield from iter_window_events(seller_id, date_from, midpoint, budget)
-        yield from iter_window_events(seller_id, midpoint, date_to, budget)
+        yield from iter_window_events(seller_id, date_from, midpoint, budget, started_at)
+        yield from iter_window_events(seller_id, midpoint, date_to, budget, started_at)
         return
 
     # Leaf window within cap -- page through it, yielding each page as
@@ -298,7 +360,11 @@ def record_unenumerable_window(db, date_from: datetime, date_to: datetime) -> No
         )
 
 
-def _fetch_shipments(raw_orders: List[Dict[str, Any]], budget: Optional[List[int]] = None) -> Dict[int, Dict[str, Any]]:
+def _fetch_shipments(
+    raw_orders: List[Dict[str, Any]],
+    budget: Optional[List[int]] = None,
+    started_at: Optional[datetime] = None,
+) -> Dict[int, Dict[str, Any]]:
     """Fetches the shipment payload for every order that carries a
     `shipping.id`, entirely BEFORE any DB session opens (same HTTP-before-
     write discipline as the order/page fetch above -- design D8).
@@ -329,6 +395,9 @@ def _fetch_shipments(raw_orders: List[Dict[str, Any]], budget: Optional[List[int
             continue
         if shipping_id in shipments:
             continue
+        if _pass_deadline_reached(started_at):
+            logger.warning("sweep: pass ran out of time before every shipment was read; the next one resumes")
+            break
         if budget[0] <= 0:
             logger.warning("sweep: fetch budget spent before every shipment was read; the next pass resumes")
             break
@@ -341,6 +410,172 @@ def _fetch_shipments(raw_orders: List[Dict[str, Any]], budget: Optional[List[int
         if isinstance(payload, dict):
             shipments[shipping_id] = payload
     return shipments
+
+
+def _extract_payment_ids(raw_order: Dict[str, Any]) -> List[int]:
+    """`order.payments[].id`, order-preserving dedup, coerced to `int` --
+    the search page already carries this array, so no extra HTTP call is
+    needed to discover which payments to fetch."""
+    raw_payments = raw_order.get("payments")
+    if not isinstance(raw_payments, list):
+        return []
+    seen: set = set()
+    ids: List[int] = []
+    for entry in raw_payments:
+        if not isinstance(entry, dict):
+            continue
+        raw_id = entry.get("id")
+        if raw_id is None:
+            continue
+        try:
+            payment_id = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if payment_id not in seen:
+            seen.add(payment_id)
+            ids.append(payment_id)
+    return ids
+
+
+def _fetch_payments(
+    raw_orders: List[Dict[str, Any]],
+    budget: Optional[List[int]] = None,
+    started_at: Optional[datetime] = None,
+) -> Dict[int, Dict[str, Any]]:
+    """Fetches every `order.payments[].id` on `raw_orders`, entirely
+    BEFORE any DB session opens (same HTTP-before-write discipline as
+    `_fetch_shipments` -- design D8).
+
+    Fail-open per payment, same discipline as `_fetch_shipments` and
+    `_sync_shipment_costs`: one failed fetch is logged and skipped, never
+    raised, so a single flaky payment lookup never turns into a
+    `WindowFetchError` that discards an otherwise-good batch.
+    """
+    if budget is None:
+        budget = [MAX_PAYMENT_FETCHES_PER_PASS]
+    payments: Dict[int, Dict[str, Any]] = {}
+    for raw_order in raw_orders:
+        for payment_id in _extract_payment_ids(raw_order):
+            if payment_id in payments:
+                continue
+            if _pass_deadline_reached(started_at):
+                logger.warning("sweep: pass ran out of time before every payment was read; the next one resumes")
+                return payments
+            if budget[0] <= 0:
+                logger.warning("sweep: payment-fetch budget spent before every payment was read; the next pass resumes")
+                return payments
+            budget[0] -= 1
+            try:
+                payload = resolve_maybe_async(ml_webhook_client.get_payment(payment_id))
+            except Exception:
+                logger.warning("sweep: payment fetch failed for payment_id=%s", payment_id, exc_info=True)
+                continue
+            if isinstance(payload, dict):
+                payments[payment_id] = payload
+    return payments
+
+
+PAYMENTS_KEY_MISSING_FIELD = "payments_key_missing"
+
+
+def _record_payments_key_missing(db, order_id: int) -> None:
+    """ML's own order payload omitted `payments[]` entirely -- not the
+    same fact as `payments: []` (see `sync_payments_for_order`'s
+    docstring). This only ever runs for a raw order FRESH off
+    `search_orders`/`get_order`, so the omission IS ML's own answer and
+    it is safe to treat as "no payments" -- but that must stay VISIBLE
+    instead of silently vanishing into a seal, exactly like
+    `record_unenumerable_window`'s escape hatch for a leaf that cannot be
+    enumerated. Reuses the generic `kind='unknown'` bucket: the CHECK
+    constraint on `ml_ops_divergence.kind` has no dedicated value for
+    this and a migration is out of scope for this fix. Re-detection
+    updates `detected_at`, deduped by the `(order_id, kind, field)`
+    unique constraint."""
+    existing = (
+        db.query(MlOpsDivergence)
+        .filter(
+            MlOpsDivergence.order_id == order_id,
+            MlOpsDivergence.kind == "unknown",
+            MlOpsDivergence.field == PAYMENTS_KEY_MISSING_FIELD,
+        )
+        .first()
+    )
+    now = datetime.now(timezone.utc)
+    if existing is not None:
+        existing.detected_at = now
+    else:
+        db.add(MlOpsDivergence(order_id=order_id, kind="unknown", field=PAYMENTS_KEY_MISSING_FIELD, detected_at=now))
+
+
+def sync_payments_for_order(
+    db,
+    order_id: int,
+    raw_order: Dict[str, Any],
+    payments_payload: Dict[int, Dict[str, Any]],
+    missing_key_is_empty: bool = False,
+) -> Tuple[int, bool]:
+    """Maps and persists every `raw_order['payments'][].id` present in
+    `payments_payload`, then seals `MlOrdersOps.payments_synced_at` ONLY
+    if every one of this order's payment ids resolved. A partial result
+    (a missing id, a fetch failure already excluded from
+    `payments_payload`, or a mapping error) leaves it NULL so the retry
+    gate (`payments_synced_at IS NULL`) picks it up again next pass.
+
+    Extracted (post-review fix, ml-backfill-pagos-y-costos) so the sweep's
+    own `process_batch` and the historical backfill
+    (`app/scripts/backfill_ml_payments_costs.py`) share this EXACT
+    sealing rule instead of drifting into two implementations of the same
+    money-path logic. Returns `(payments_synced, sealed)`.
+
+    The `payments`
+    key ABSENT is not the same fact as `payments` present and EMPTY.
+    ML's own order schema guarantees the key on every live order, so
+    `payments: []` means "ML says this order genuinely has none" -- fine
+    to seal. The key being absent means the SOURCE never told us either
+    way -- UNLESS the caller can vouch that `raw_order` is genuinely
+    fresh off ML (`missing_key_is_empty=True`), in which case the
+    omission itself IS ML's answer and sealing is correct (the sweep's
+    `process_batch` also records `_record_payments_key_missing` first, so
+    this stays visible rather than silently vanishing).
+
+    The default (`missing_key_is_empty=False`) is for a `raw_order` NOT
+    guaranteed fresh -- e.g. the backfill's first read of
+    `MlOrdersOps.raw_order`, written by whatever ingestion version was
+    running at the time, which may have truncated, half-written, or
+    otherwise never persisted this field. Sealing on an ABSENT key there
+    converts an unknown into "zero payments, done" -- and since
+    `payments_synced_at IS NULL` is the ONLY retry gate, that order could
+    never become a candidate again. The backfill
+    itself now refetches such an order fresh from ML BEFORE ever calling
+    this function with `missing_key_is_empty=True`, instead of leaving it
+    permanently unresolved -- see `backfill_payments_costs_service.py`."""
+    if raw_order.get("payments") is None and not missing_key_is_empty:
+        return 0, False
+    payment_ids = _extract_payment_ids(raw_order)
+    synced = 0
+    all_synced = True
+    for payment_id in payment_ids:
+        payment_payload = payments_payload.get(payment_id)
+        if payment_payload is None:
+            all_synced = False
+            continue
+        mapped_payment = map_payment(payment_payload)
+        if isinstance(mapped_payment, PaymentMappingError):
+            logger.warning(
+                "sync_payments_for_order: payment mapping error for payment_id=%s (order_id=%s): %s",
+                payment_id,
+                order_id,
+                mapped_payment.reason,
+            )
+            all_synced = False
+            continue
+        upsert_payment(db, mapped_payment)
+        synced += 1
+    if all_synced:
+        db.query(MlOrdersOps).filter(MlOrdersOps.order_id == order_id).update(
+            {"payments_synced_at": datetime.now(timezone.utc)}
+        )
+    return synced, all_synced
 
 
 def tz_aware(value: Optional[datetime]) -> Optional[datetime]:
@@ -377,6 +612,25 @@ def _stored_ml_last_updated(order_ids: List[int]) -> Dict[int, Optional[datetime
     return {order_id: tz_aware(stored) for order_id, stored in rows}
 
 
+def _orders_with_payments_synced(order_ids: List[int]) -> set:
+    """Orders whose `payments_synced_at` is already set, in one query --
+    the ONLY retry gate for `order.payments[]` ingestion (post-review
+    fix), mirroring `_shipments_needing_cost_sync`'s `costs_synced_at IS
+    NULL` gate: independent of the order's own staleness, so a payment
+    fetch that failed on a PRIOR pass (timeout, spent budget) is retried
+    on every later pass until it actually succeeds -- never silently
+    abandoned just because the order itself stopped being stale."""
+    if not order_ids:
+        return set()
+    with get_background_db() as db:
+        rows = (
+            db.query(MlOrdersOps.order_id)
+            .filter(MlOrdersOps.order_id.in_(order_ids), MlOrdersOps.payments_synced_at.isnot(None))
+            .all()
+        )
+    return {order_id for (order_id,) in rows}
+
+
 def _orders_with_a_settled_shipment(order_ids: List[int]) -> set:
     """Orders whose stored shipment has finished moving, in one query.
 
@@ -400,11 +654,164 @@ def _orders_with_a_settled_shipment(order_ids: List[int]) -> set:
     return {order_id for (order_id,) in rows}
 
 
+def _extract_sender_cost(payload: Dict[str, Any]) -> Optional[Decimal]:
+    """The seller's real charge is `senders[0].cost`, taken AS-IS from ML --
+    NEVER derived from `base_cost/2` or any other calculation: `base_cost`
+    can be the PRE-discount figure and the discount (`senders[0].discounts[]`)
+    is itself mutable (investigation §1)."""
+    senders = payload.get("senders")
+    if not isinstance(senders, list) or not senders:
+        return None
+    first = senders[0]
+    if not isinstance(first, dict):
+        return None
+    cost = first.get("cost")
+    if cost is None:
+        return None
+    try:
+        return Decimal(str(cost))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def _extract_receiver_cost(payload: Dict[str, Any]) -> Optional[Decimal]:
+    """Persisted alongside `sender_cost` -- corte 5 (tax breakdown) needs it
+    as the base for the buyer-side tax calculation."""
+    receiver = payload.get("receiver")
+    if not isinstance(receiver, dict):
+        return None
+    cost = receiver.get("cost")
+    if cost is None:
+        return None
+    try:
+        return Decimal(str(cost))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def _shipments_needing_cost_sync(shipment_ids: List[int]) -> List[int]:
+    """Shipments already stored (order/webhook ingestion writes the row
+    first) that have never had their costs synced. `costs_synced_at IS
+    NULL` is the ONLY gate -- independent of shipment status: a terminal
+    shipment without synced costs must still be synced exactly once."""
+    if not shipment_ids:
+        return []
+    with get_background_db() as db:
+        rows = (
+            db.query(MlShipmentOps.shipment_id)
+            .filter(
+                MlShipmentOps.shipment_id.in_(shipment_ids),
+                MlShipmentOps.costs_synced_at.is_(None),
+            )
+            .all()
+        )
+    return [shipment_id for (shipment_id,) in rows]
+
+
+def _sync_shipment_costs(
+    shipment_ids: List[int],
+    budget: Optional[List[int]] = None,
+    started_at: Optional[datetime] = None,
+    attempted_out: Optional[Set[int]] = None,
+) -> int:
+    """Fetches and persists `sender_cost`/`receiver_cost` for every shipment
+    in `shipment_ids` whose `costs_synced_at` is still NULL.
+
+    Fail-open per shipment (same discipline as `_fetch_shipments`): one
+    shipment whose cost fetch fails (network error, the SSRF guard raising
+    for a non-coercible id, a malformed payload) is logged and skipped --
+    it never blocks the rest of the batch or turns into a `WindowFetchError`
+    that would discard the pass. `costs_synced_at` stays NULL for that
+    shipment, so the next pass retries it.
+
+    HTTP happens entirely before any DB session opens for the write, same
+    HTTP-before-write discipline as `_fetch_shipments` (design D8).
+
+    `attempted_out`, when given, collects the ids this call actually
+    spent an HTTP fetch on. A shipment skipped because the budget or the
+    pass deadline ran out never reaches ML, so a caller that counts
+    give-up attempts must not charge it one -- see the backfill's
+    `_record_cost_sync_attempt` call site.
+    """
+    to_sync = _shipments_needing_cost_sync(shipment_ids)
+    if not to_sync:
+        return 0
+    if budget is None:
+        budget = [MAX_COST_FETCHES_PER_PASS]
+
+    fetched: Dict[int, Dict[str, Any]] = {}
+    for shipment_id in to_sync:
+        if _pass_deadline_reached(started_at):
+            logger.warning("sweep: pass ran out of time during cost sync; the next one resumes")
+            break
+        if budget[0] <= 0:
+            logger.warning(
+                "sweep: cost-fetch budget spent before every unsynced shipment was read; the next pass resumes"
+            )
+            break
+        budget[0] -= 1
+        if attempted_out is not None:
+            attempted_out.add(shipment_id)
+        try:
+            payload = resolve_maybe_async(ml_webhook_client.get_shipment_costs(shipment_id))
+        except Exception:
+            logger.warning("sweep: shipment cost fetch failed for shipment_id=%s", shipment_id, exc_info=True)
+            continue
+        if isinstance(payload, dict):
+            fetched[shipment_id] = payload
+
+    if not fetched:
+        return 0
+
+    now = datetime.now(timezone.utc)
+    synced = 0
+    with get_background_db() as db:
+        rows = db.query(MlShipmentOps).filter(MlShipmentOps.shipment_id.in_(fetched.keys())).all()
+        for row in rows:
+            payload = fetched.get(row.shipment_id)
+            if payload is None:
+                continue
+            sender = _extract_sender_cost(payload)
+            receiver = _extract_receiver_cost(payload)
+            # Write only what actually arrived, and seal only when BOTH
+            # arrived. `costs_synced_at IS NULL` is the ONLY retry gate, so
+            # stamping it here on a partial payload loses the missing cost
+            # forever -- on the money path -- and overwrites with NULL
+            # whatever a previous pass had already stored. Not
+            # hypothetical: this is what ML returns while a shipment's
+            # costs are not settled yet, and `receiver_cost` is what corte
+            # 5 needs as the tax base.
+            if sender is None and receiver is None:
+                logger.warning(
+                    "sweep: cost payload carried no usable costs for shipment_id=%s; left for the next pass",
+                    row.shipment_id,
+                )
+                continue
+            if sender is not None:
+                row.sender_cost = sender
+            if receiver is not None:
+                row.receiver_cost = receiver
+            if sender is None or receiver is None:
+                logger.warning(
+                    "sweep: partial cost payload for shipment_id=%s (sender=%s receiver=%s); not sealed",
+                    row.shipment_id,
+                    sender is not None,
+                    receiver is not None,
+                )
+                continue
+            row.costs_synced_at = now
+            synced += 1
+    return synced
+
+
 def process_batch(
     raw_orders: List[Dict[str, Any]],
     window_from_floor: datetime,
     result: SweepResult,
     budget: Optional[List[int]] = None,
+    cost_budget: Optional[List[int]] = None,
+    pass_started_at: Optional[datetime] = None,
+    payment_budget: Optional[List[int]] = None,
 ) -> None:
     """Upserts one bounded batch in its OWN short-lived session. Every
     shipment payload was already fetched (HTTP-only, see `_fetch_shipments`)
@@ -454,8 +861,43 @@ def process_batch(
         or mapped.ml_last_updated > stored_versions[mapped.order_id]
         or mapped.order_id not in settled_shipments
     ]
-    shipments = _fetch_shipments([raw for raw, _ in ingestable], budget)
+    shipments = _fetch_shipments([raw for raw, _ in ingestable], budget, started_at=pass_started_at)
 
+    # Payments (corte 5, post-review fix) are gated by the UNION of two
+    # triggers:
+    #   1. The order itself is new or genuinely re-ingested (its own
+    #      `ml_last_updated` moved forward) -- a return moves an order's
+    #      `date_last_updated` and can move its payment(s)' own
+    #      status/refund amounts with it, so a real update must always
+    #      refetch, EVEN IF this order's payments were already sealed by
+    #      an earlier pass.
+    #   2. `payments_synced_at IS NULL` -- the actual RETRY gate (finding
+    #      1's fix). The original trigger was `UpsertOutcome.OK` alone,
+    #      which is (1) by itself: a payment fetch that failed (timeout,
+    #      spent budget) on the SAME pass the order upserted successfully
+    #      was never retried, because the next pass finds the order no
+    #      longer stale and never asks for its payments again -- the
+    #      order silently ends up ingested with no net forever. (2)
+    #      covers both a brand-new order (never synced) and a
+    #      previously-failed one (still NULL), independent of
+    #      `ml_last_updated`, mirroring the shipment cost gate.
+    stale_trigger_ids = {
+        mapped.order_id
+        for _, mapped in in_window
+        if stored_versions.get(mapped.order_id) is None or mapped.ml_last_updated > stored_versions[mapped.order_id]
+    }
+    payments_already_synced = _orders_with_payments_synced(in_window_ids)
+    payment_candidates = [
+        (raw_order, mapped)
+        for raw_order, mapped in in_window
+        if mapped.order_id in stale_trigger_ids or mapped.order_id not in payments_already_synced
+    ]
+    payments_payload = _fetch_payments(
+        [raw for raw, _ in payment_candidates], payment_budget, started_at=pass_started_at
+    )
+    payment_candidate_ids = {mapped.order_id for _, mapped in payment_candidates}
+
+    payments_synced = 0
     with get_background_db() as db:
         for raw_order, mapped in classified:
             if mapped.date_created is not None and mapped.date_created < window_from_floor:
@@ -478,6 +920,29 @@ def process_batch(
                 logger.error("sweep: upsert_order returned DISABLED mid-window -- flag toggled during a run?")
                 continue
 
+            # Payments are synced for BOTH `OK` and `SKIPPED_STALE` --
+            # the order row exists either way, and this is the retry gate
+            # for a payment fetch that failed on an earlier pass while the
+            # order itself was (or has since become) unchanged. Sealed
+            # (`payments_synced_at`) ONLY once every one of this order's
+            # payment ids resolved to a successfully mapped+persisted
+            # payment; a partial failure leaves it NULL so the next pass
+            # retries exactly the missing ones (`payments_payload` is
+            # re-fetched fresh every pass for any still-NULL order).
+            if mapped.order_id in payment_candidate_ids:
+                # `raw_order` here is fresh off THIS pass's `search_orders`
+                # call (design D5's single source of truth), so an absent
+                # `payments` key is ML's own answer, not an unknown --
+                # `missing_key_is_empty=True` -- but it is recorded first
+                # so it stays visible instead of silently vanishing into a
+                # seal (post-review fix #1/#2).
+                if raw_order.get("payments") is None:
+                    _record_payments_key_missing(db, mapped.order_id)
+                order_synced, _sealed = sync_payments_for_order(
+                    db, mapped.order_id, raw_order, payments_payload, missing_key_is_empty=True
+                )
+                payments_synced += order_synced
+
             # Shipment upsert failures are NOT folded into the order
             # counters above -- a shipment mapping error/staleness says
             # nothing about whether the order itself was written, and
@@ -499,6 +964,19 @@ def process_batch(
     result.orders_skipped_stale += skipped_stale
     result.orders_mapping_error += mapping_error
     result.orders_out_of_window += out_of_window
+    result.payments_synced += payments_synced
+
+    # Cost sync runs for every shipping_id this batch touched (not just
+    # `ingestable`'s subset that got a fresh `get_shipment` fetch): a
+    # settled/terminal shipment is deliberately excluded from
+    # `_fetch_shipments` above once its own status is stored, but it must
+    # still get its costs synced exactly once (`costs_synced_at IS NULL`
+    # is the only gate, independent of shipment status).
+    shipping_ids_this_batch = sorted({mapped.shipping_id for _, mapped in classified if mapped.shipping_id is not None})
+    if shipping_ids_this_batch:
+        result.shipment_costs_synced += _sync_shipment_costs(
+            shipping_ids_this_batch, cost_budget, started_at=pass_started_at
+        )
 
 
 def load_cursor(db, for_update: bool = False, cursor_name: str = CURSOR_NAME) -> Optional[MlOpsSyncCursor]:
@@ -672,26 +1150,49 @@ def run_sweep(seller_id: Optional[int] = None, window_days: Optional[int] = None
     result = SweepResult(ran=True, window_from=window_start, window_to=prior_window_to)
     last_checkpoint_to = prior_window_to
     pending: List[Dict[str, Any]] = []
-    # ONE allowance for the whole pass, shared by the page walk and the
-    # shipment lookups. Two separate budgets would each stay under their own
-    # limit while the pass as a whole ran far past the stale-lock timeout.
+    # Budget for the page walk and the `get_shipment` lookups. No longer
+    # the pass's only ceiling: `PASS_TIME_BUDGET` cuts on the clock before
+    # the stale lock -- which is what this comment protected back when
+    # counting calls was enough. See the note on `PASS_DEADLINE_MARGIN`.
     fetch_budget: List[int] = [MAX_WINDOW_FETCHES_PER_PASS]
+    # A SEPARATE per-pass allowance for `get_shipment_costs` (see
+    # `MAX_COST_FETCHES_PER_PASS`): sharing `fetch_budget` would let a
+    # first-pass backlog of thousands of unsynced shipments starve the page
+    # walk / `get_shipment` of their own budget on that same pass.
+    cost_budget: List[int] = [MAX_COST_FETCHES_PER_PASS]
+    # A THIRD separate allowance for `get_payment` (corte 5) -- same
+    # starvation concern as `cost_budget`.
+    payment_budget: List[int] = [MAX_PAYMENT_FETCHES_PER_PASS]
+    # The pass's clock: `PASS_TIME_BUDGET` is measured against this.
+    pass_started_at = datetime.now(timezone.utc)
 
     def _flush_pending() -> None:
         nonlocal pending
         if pending:
-            process_batch(pending, window_from_floor, result, fetch_budget)
+            process_batch(
+                pending, window_from_floor, result, fetch_budget, cost_budget, pass_started_at, payment_budget
+            )
             pending = []
 
     failure: Optional[BaseException] = None
 
     try:
-        for event in iter_window_events(int(resolved_seller_id), window_start, window_end, fetch_budget):
+        for event in iter_window_events(
+            int(resolved_seller_id), window_start, window_end, fetch_budget, pass_started_at
+        ):
             kind = event[0]
             if kind == "page":
                 pending.extend(event[1])
                 while len(pending) >= BATCH_SIZE:
-                    process_batch(pending[:BATCH_SIZE], window_from_floor, result, fetch_budget)
+                    process_batch(
+                        pending[:BATCH_SIZE],
+                        window_from_floor,
+                        result,
+                        fetch_budget,
+                        cost_budget,
+                        pass_started_at,
+                        payment_budget,
+                    )
                     pending = pending[BATCH_SIZE:]
             elif kind == "budget_exhausted":
                 # Stop this pass without advancing past the unfinished

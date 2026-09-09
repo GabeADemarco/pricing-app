@@ -108,6 +108,18 @@ class MlOrdersOps(Base):
 
     ingest_error = Column(Text, nullable=True)
 
+    # ml-ventas-desglose-costos corte 5, post-review fix: the ONLY retry
+    # gate for `order.payments[]` ingestion, mirroring
+    # `MlShipmentOps.costs_synced_at` (corte 1/4). NULL means "at least one
+    # of this order's payments is still missing/unsynced" -- independent
+    # of `ml_last_updated` staleness, exactly like the shipment cost gate.
+    # Without this column the trigger was `UpsertOutcome.OK`, a ONE-SHOT
+    # event: a payment fetch that failed on the same pass the order itself
+    # upserted successfully was never retried, because the next pass finds
+    # the order no longer stale and never asks for its payments again --
+    # the order silently ends up ingested with no net forever.
+    payments_synced_at = Column(DateTime(timezone=True), nullable=True)
+
     first_seen_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     last_synced_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -169,6 +181,12 @@ class MlShipmentOps(Base):
     raw_shipment = Column(JSONB, nullable=True)
 
     last_synced_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    # ml-ventas-desglose-costos corte 1: shipment-level cost split. No
+    # writer yet -- populated by a later cut.
+    sender_cost = Column(Numeric(14, 2), nullable=True)
+    receiver_cost = Column(Numeric(14, 2), nullable=True)
+    costs_synced_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class MlOperationLink(Base):
@@ -254,6 +272,16 @@ class MlOpsSyncCursor(Base):
 # (which used to pull the whole ingestion service into the router's
 # import graph for one string constant).
 UNENUMERABLE_KIND = "window_not_enumerable"
+
+# Cost-sync give-up counters (the payments/costs backfill). Like
+# `UNENUMERABLE_KIND` these live on the model rather than in the writer,
+# because the reader -- `DivergenceSummary.from_row` -- has to recognize
+# them to avoid rendering the `order_id=0` sentinel as a real ML order.
+# They reuse the generic `unknown` kind: the CHECK constraint on `kind`
+# has no dedicated value and adding one is a migration of its own.
+COST_SYNC_KIND = "unknown"
+COST_SYNC_FIELD_PREFIX = "cost_sync:"
+COST_SYNC_SENTINEL_ORDER_ID = 0
 
 
 class MlOpsDivergence(Base):

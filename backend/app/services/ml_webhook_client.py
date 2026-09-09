@@ -1,4 +1,5 @@
 import asyncio
+import re
 import httpx
 from datetime import datetime, timezone
 from typing import Dict, Optional, List, Union
@@ -31,6 +32,47 @@ def _describe_exc(exc: BaseException) -> str:
     """
     detail = str(exc)
     return f"{type(exc).__name__}: {detail}" if detail else type(exc).__name__
+
+
+_BILLING_GROUPS = frozenset({"ML", "MP"})
+_PERIOD_KEY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_FROM_ID_RE = re.compile(r"^\d{1,20}$")
+
+
+def _validate_from_id(from_id: int | str) -> str:
+    """Valida el cursor de paginación de facturación.
+
+    `from_id` viaja dentro del `resource` que el proxy reenvía a ML, así
+    que un valor arbitrario acá es una inyección en la query de ML. Los
+    `detail_id` de ML son enteros (ej. 70714313961), y el arranque es 0:
+    cualquier otra cosa es un dato que no entendemos, y ante eso el
+    programador falla fuerte -- devolver None lo haría indistinguible de
+    un timeout, y el barrido seguiría creyendo que el período vino vacío.
+    """
+    texto = str(from_id).strip()
+    if not _FROM_ID_RE.match(texto):
+        raise ValueError(f"from_id inválido: {from_id!r}")
+    return texto
+
+
+def _validate_billing_group(group: str) -> str:
+    """`group` termina en el PATH del resource, no en un query param.
+
+    Un valor como `"ML/details?document_type=BILL&"` reescribiría qué
+    recurso de ML consulta el proxy. Conjunto cerrado, y levanta ANTES de
+    cualquier HTTP.
+    """
+    if group not in _BILLING_GROUPS:
+        raise ValueError(f"group de facturación inválido: {group!r} (esperado ML o MP)")
+    return group
+
+
+def _validate_period_key(period_key: str) -> str:
+    """Misma razón que `_validate_billing_group`: va en el path. Un
+    `period_key` con `../` cambiaría el recurso consultado."""
+    if not isinstance(period_key, str) or not _PERIOD_KEY_RE.match(period_key):
+        raise ValueError(f"period_key inválido: {period_key!r} (esperado YYYY-MM-DD)")
+    return period_key
 
 
 class MLWebhookClient:
@@ -401,6 +443,222 @@ class MLWebhookClient:
 
         except Exception as e:
             logger.error(f"Error buscando órdenes (seller={seller_id_int}, offset={offset}): {_describe_exc(e)}")
+            return None
+
+    # ── ML Billing (ml-ventas-desglose-costos, corte 2) ──────────────
+    # Additive read-only methods over the billing/shipment-costs proxy
+    # resources. Same error-swallow shape as every other read method:
+    # timeout/error -> None.
+    #
+    # OJO, y es una diferencia con el resto del cliente: estos tres métodos
+    # SÍ levantan `ValueError` ante un parámetro inválido, antes de tocar la
+    # red. No es una inconsistencia: un `group` o un `period_key` mal
+    # formado es un bug del llamador, no una falla de ML, y devolver `None`
+    # lo haría indistinguible de un timeout -- el barrido del corte 3
+    # seguiría de largo creyendo que el período vino vacío. La red falla
+    # blando; el programador falla fuerte.
+    #
+    # EVERY value interpolated into `resource` is validated BEFORE any HTTP
+    # call (Threat Matrix SSRF row): ids coerced to `int`, `group` checked
+    # against a closed set, `period_key` against a date shape. `params=`
+    # url-encodes the resource on the hop to the proxy, but the proxy
+    # decodes it and uses it as a path -- encoding is transport, not
+    # validation. These methods are called by the sweep with parameters it
+    # derives, so the check belongs here and not at each call site.
+    #
+    # Rate limit (verified live, see investigation doc §3): billing is
+    # 5 requests/minute PER ACCOUNT, not per endpoint. These methods do
+    # NOT retry or throttle themselves -- the caller (a once-daily sweep,
+    # corte 3) owns the pacing. Calling `get_billing_details` per-order
+    # would exhaust the account's budget and starve every other billing
+    # consumer (promos, PxQ); it must only ever be called per PERIOD.
+
+    async def get_billing_periods(self, group: str) -> Optional[Dict]:
+        """Lista los períodos de facturación de ML vía el proxy `billing`.
+
+        Args:
+            group: `"ML"` o `"MP"` (grupo de facturación de ML).
+
+        Returns:
+            Dict crudo `{periods: [...]}`, o None si hay error/timeout.
+        """
+        group = _validate_billing_group(group)
+        resource = f"/billing/integration/monthly/periods?group={group}&document_type=BILL"
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{self.base_url}/api/ml/billing", params={"resource": resource})
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.error(f"Error obteniendo períodos de facturación (group={group}): {_describe_exc(e)}")
+            return None
+
+    async def get_billing_details(
+        self, period_key: str, group: str, limit: int = 1000, from_id: int | str = 0
+    ) -> Optional[Dict]:
+        """Obtiene una página de cargos de facturación de un período vía el
+        proxy `billing`.
+
+        Args:
+            period_key: Clave del período (ej: "2026-09-01").
+            group: `"ML"` o `"MP"`.
+            limit: Tamaño de página (ML acepta hasta 1000).
+            from_id: Cursor de paginación. Empieza en 0 y después lleva el
+                `last_id` de la página anterior.
+
+        NO USAR `offset`: ML rechaza `offset + limit > 10_000` con un 422
+        y el período abierto tuvo 22.538 cargos. Como el orden es
+        ascendente, lo que `offset` no alcanza es lo MÁS RECIENTE, que es
+        justo lo que sirve. La guía de ML es explícita: `from_id` es el
+        único método que garantiza integridad en listados largos, y se
+        combina con `sort_by=ID`.
+
+        Returns:
+            Dict crudo `{results: [...], total, limit, offset, last_id}`,
+            o None si hay error/timeout. `total` y `last_id` vienen en el
+            NIVEL SUPERIOR; ML no manda ningún objeto `paging`.
+        """
+        group = _validate_billing_group(group)
+        period_key = _validate_period_key(period_key)
+        limit = int(limit)
+        from_id = _validate_from_id(from_id)
+        resource = (
+            f"/billing/integration/periods/key/{period_key}/group/{group}/details"
+            f"?document_type=BILL&limit={limit}&from_id={from_id}&sort_by=ID&order_by=ASC"
+        )
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(f"{self.base_url}/api/ml/billing", params={"resource": resource})
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.error(
+                f"Error obteniendo detalle de facturación (period={period_key}, group={group}, "
+                f"from_id={from_id}): {_describe_exc(e)}"
+            )
+            return None
+
+    async def get_billing_documents(self, period_key: str, group: str) -> Optional[Dict]:
+        """Lista los documentos de un período de facturación vía el proxy
+        `billing`. Usado como chequeo de completitud (OBSERVACIÓN, nunca
+        alarma -- investigación §3: `documents.count_details` sumado no
+        coincide con `total` del detalle por una diferencia sin
+        explicar, así que nunca puede bloquear el barrido).
+
+        Args:
+            period_key: Clave del período (ej: "2026-09-01").
+            group: `"ML"` o `"MP"`.
+
+        OJO -- ESTE RECURSO NO ESTÁ SCOPEADO POR GRUPO. El path de ML no
+        lleva `group`, así que el conteo abarca TODOS los grupos del
+        período. `group` se sigue validando (llega de un llamador que lo
+        deriva, y validar barato es mejor que confiar) pero NO cambia la
+        respuesta.
+
+        Consecuencia directa: `count_details` NO es comparable contra el
+        `total` de los detalles de un solo grupo. Esa comparación no
+        puede cerrar por construcción, y es candidata a explicar la
+        discrepancia de 329 que la investigación dejó abierta (18.414 de
+        `documents` contra 18.743 del detalle de `group=ML`). Por eso el
+        barrido lo guarda como OBSERVACIÓN y nunca como alarma.
+
+        Returns:
+            Dict crudo `{documents: [...]}`, o None si hay error/timeout.
+        """
+        group = _validate_billing_group(group)
+        period_key = _validate_period_key(period_key)
+        resource = f"/billing/integration/periods/key/{period_key}/documents?document_type=BILL"
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{self.base_url}/api/ml/billing", params={"resource": resource})
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.error(
+                f"Error obteniendo documentos de facturación (period={period_key}, group={group}): {_describe_exc(e)}"
+            )
+            return None
+
+    async def get_shipment_costs(self, shipment_id: Union[int, str]) -> Optional[Dict]:
+        """Obtiene el desglose de costos de un envío de MercadoLibre vía el
+        proxy `orders`.
+
+        El costo real del vendedor es `senders[0].cost`, tomado TAL CUAL
+        viene de ML -- NUNCA derivado de `base_cost/2` u otro cálculo. Ver
+        investigación §1: `base_cost` puede no reflejar un descuento
+        (`senders[0].discounts[]`) que ML aplica y puede cambiar.
+
+        Args:
+            shipment_id: El id numérico del shipment ML.
+
+        Returns:
+            Dict con el payload crudo de costos, o None si hay
+            error/timeout/404.
+
+        Raises:
+            ValueError: si `shipment_id` no es coercionable a `int` — se
+                levanta ANTES de cualquier llamada HTTP (SSRF-safe).
+        """
+        try:
+            shipment_id_int = int(shipment_id)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"shipment_id no coercionable a int: {shipment_id!r}") from e
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{self.base_url}/api/ml/orders", params={"resource": f"/shipments/{shipment_id_int}/costs"}
+                )
+
+                if response.status_code == 404:
+                    logger.warning(f"Costos de envío {shipment_id_int} no encontrados en ML")
+                    return None
+
+                response.raise_for_status()
+                return response.json()
+
+        except Exception as e:
+            logger.error(f"Error obteniendo costos de envío {shipment_id_int}: {_describe_exc(e)}")
+            return None
+
+    # ── ML Payments (ml-ventas-desglose-costos, corte 5) ─────────────
+    # Different proxy resource than orders/shipments: `/api/ml/payment`,
+    # NOT `/api/ml/orders`, and NOT via `resource=` -- it takes a plain
+    # `payment_id` query param. Same error-swallow shape as every other
+    # read method: timeout/error/404 -> None, never raises for those.
+
+    async def get_payment(self, payment_id: Union[int, str]) -> Optional[Dict]:
+        """Obtiene un pago de Mercado Pago vía el proxy `payment`.
+
+        Args:
+            payment_id: El id numérico del pago MP.
+
+        Returns:
+            Dict con el payload crudo del pago, o None si hay
+            error/timeout/404.
+
+        Raises:
+            ValueError: si `payment_id` no es coercionable a `int` — se
+                levanta ANTES de cualquier llamada HTTP (SSRF-safe).
+        """
+        try:
+            payment_id_int = int(payment_id)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"payment_id no coercionable a int: {payment_id!r}") from e
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(f"{self.base_url}/api/ml/payment", params={"payment_id": payment_id_int})
+
+                if response.status_code == 404:
+                    logger.warning(f"Pago {payment_id_int} no encontrado en ML")
+                    return None
+
+                response.raise_for_status()
+                return response.json()
+
+        except Exception as e:
+            logger.error(f"Error obteniendo pago {payment_id_int}: {_describe_exc(e)}")
             return None
 
     # ── ML Seller Promotions (READ-ONLY, PR1) ───────────────────────

@@ -38,6 +38,9 @@ from app.core.database import get_db
 from app.models.ml_bot_message import MlBotMessage
 from app.models.ml_bot_question import MlBotQuestion
 from app.models.ml_orders_ops import (
+    COST_SYNC_FIELD_PREFIX,
+    COST_SYNC_KIND,
+    COST_SYNC_SENTINEL_ORDER_ID,
     UNENUMERABLE_KIND,
     MlOperationLink,
     MlOpsDivergence,
@@ -54,6 +57,7 @@ from app.services.ml_orders_ingestion.operation_status import (
     PAID_ORDER_STATUSES,
     SETTLED_CLAIM_STATUSES,
 )
+from app.services.ml_ventas_desglose.breakdown_service import compute_breakdown, compute_neto_by_order_ids
 from app.services.permisos_service import PermisosService
 
 DIVERGENCE_KINDS = (
@@ -164,6 +168,40 @@ class MessageSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class BreakdownLineSummary(BaseModel):
+    """One line of the cost breakdown. `origen` is always `"api"`: every
+    line comes straight from ML's own payment/billing data, nothing is
+    computed here (corte 6 of ml-ventas-desglose-costos)."""
+
+    concepto: str
+    monto: float
+    origen: str = "api"
+
+
+class OperationBreakdownSummary(BaseModel):
+    """The sale's cost breakdown. `incompleto=True` with a populated
+    `incomplete_reasons` means data is missing -- `neto` is never a
+    fabricated number in that case (it is `None` when payments have not
+    even synced)."""
+
+    lines: List[BreakdownLineSummary]
+    neto: Optional[float] = None
+    incompleto: bool
+    incomplete_reasons: List[str]
+
+    @classmethod
+    def from_domain(cls, breakdown) -> "OperationBreakdownSummary":
+        return cls(
+            lines=[
+                BreakdownLineSummary(concepto=line.concepto, monto=float(line.monto), origen=line.origen)
+                for line in breakdown.lines
+            ],
+            neto=float(breakdown.neto) if breakdown.neto is not None else None,
+            incompleto=breakdown.incompleto,
+            incomplete_reasons=list(breakdown.incomplete_reasons),
+        )
+
+
 class SaleCentricOperation(BaseModel):
     order: OrderOpsSummary
     items: List[OrderItemOpsSummary]
@@ -171,6 +209,7 @@ class SaleCentricOperation(BaseModel):
     claim: Optional[ClaimSummary] = None
     questions: List[QuestionSummary]
     messages: List[MessageSummary]
+    breakdown: OperationBreakdownSummary
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -207,9 +246,20 @@ class DivergenceSummary(BaseModel):
     @classmethod
     def from_row(cls, row: MlOpsDivergence) -> "DivergenceSummary":
         is_unenumerable = row.kind == UNENUMERABLE_KIND and row.order_id == _UNENUMERABLE_SENTINEL_ORDER_ID
+        # Cost-sync give-up counters share the `order_id=0` sentinel but
+        # not the `window_not_enumerable` kind, so they need their own
+        # test: without it they render as ML order 0, an order that does
+        # not exist. Their `field` (`cost_sync:<shipment_id>`) and
+        # `ml_value` (the attempt count) ARE meaningful, so only the
+        # sentinel order id is masked.
+        is_cost_sync = (
+            row.kind == COST_SYNC_KIND
+            and row.order_id == COST_SYNC_SENTINEL_ORDER_ID
+            and (row.field or "").startswith(COST_SYNC_FIELD_PREFIX)
+        )
         return cls(
             id=row.id,
-            order_id=None if is_unenumerable else row.order_id,
+            order_id=None if (is_unenumerable or is_cost_sync) else row.order_id,
             kind=row.kind,
             field=None if is_unenumerable else row.field,
             ml_value=None if is_unenumerable else row.ml_value,
@@ -250,6 +300,7 @@ class SaleListItem(BaseModel):
     shipping_status: Optional[str] = None
     operation_status: str
     goods_status: str
+    neto: Optional[float] = None
 
 
 class SaleGroup(BaseModel):
@@ -284,6 +335,7 @@ class SaleGroup(BaseModel):
     operation_status: str
     goods_status: str
     orders: List[SaleListItem]
+    neto: Optional[float] = None
 
 
 class SaleFacetCounts(BaseModel):
@@ -552,7 +604,14 @@ def listar_ventas(
             .order_by(MlOrdersOps.date_created.asc().nullslast(), MlOrdersOps.order_id.asc())
             .all()
         )
+        # `neto` for every order on the page, in TWO bulk queries total --
+        # never one query per row. See `compute_neto_by_order_ids`'s
+        # docstring: same rule `compute_breakdown` applies to a single sale,
+        # reused (not reimplemented) here for the whole page at once.
+        page_order_ids = [order.order_id for order, _shipment, _key, _op, _goods in member_rows]
+        neto_by_order = compute_neto_by_order_ids(db, page_order_ids)
         for order, shipment, key, operation_status_value, goods_status_value in member_rows:
+            order_neto = neto_by_order.get(order.order_id)
             members_by_key.setdefault(key, []).append(
                 SaleListItem(
                     order_id=order.order_id,
@@ -567,6 +626,7 @@ def listar_ventas(
                     shipping_status=shipment.status if shipment is not None else None,
                     operation_status=operation_status_value,
                     goods_status=goods_status_value,
+                    neto=float(order_neto) if order_neto is not None else None,
                 )
             )
 
@@ -585,10 +645,23 @@ def listar_ventas(
         # so reading `len(currencies)` in a later argument would depend on
         # argument evaluation order.
         single_currency = currencies.pop() if len(currencies) == 1 else None
+        # The pack's neto is the SUM of its orders' -- `None` if ANY member
+        # lacks synced payments, never a partial sum that quietly ignores
+        # the missing one. Resolved before the constructor for the same
+        # reason `single_currency` is: no mutation inside a call's arguments.
+        #
+        # `single_currency` gates it for the same reason `total_amount`
+        # below is gated: adding ARS to USD produces a number that means
+        # nothing. Worse here than there -- a mixed pack would render a
+        # null amount beside a numeric net, and the row would read as MORE
+        # trustworthy than the honest null next to it.
+        member_netos = [m.neto for m in members]
+        group_neto = None if (single_currency is None or any(n is None for n in member_netos)) else sum(member_netos)
         groups.append(
             SaleGroup(
                 group_key=key,
                 pack_id=pack_id,
+                neto=group_neto,
                 # The earliest member. NOTE this is not always the value the
                 # row is sorted by: the sort uses `min` over the FILTERED
                 # orders, this uses `min` over all of them. For the pack that
@@ -689,6 +762,17 @@ def obtener_operacion(
     questions = db.query(MlBotQuestion).filter(MlBotQuestion.id.in_(question_ids)).all() if question_ids else []
     messages = db.query(MlBotMessage).filter(MlBotMessage.id.in_(message_ids)).all() if message_ids else []
 
+    # The breakdown is of the PACK, not just this order -- same grouping
+    # `listar_ventas` uses (`_group_key_expr`): a lone order is its own
+    # group, an order in a pack shares its breakdown with every sibling.
+    if order.pack_id is not None:
+        breakdown_order_ids = [
+            row.order_id for row in db.query(MlOrdersOps.order_id).filter(MlOrdersOps.pack_id == order.pack_id).all()
+        ]
+    else:
+        breakdown_order_ids = [order.order_id]
+    breakdown = compute_breakdown(db, breakdown_order_ids)
+
     return SaleCentricOperation(
         order=OrderOpsSummary.model_validate(order),
         items=[OrderItemOpsSummary.model_validate(item) for item in items],
@@ -696,6 +780,7 @@ def obtener_operacion(
         claim=ClaimSummary.model_validate(claim) if claim else None,
         questions=[QuestionSummary.model_validate(q) for q in questions],
         messages=[MessageSummary.model_validate(m) for m in messages],
+        breakdown=OperationBreakdownSummary.from_domain(breakdown),
     )
 
 
